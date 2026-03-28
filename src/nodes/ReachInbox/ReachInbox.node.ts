@@ -4,6 +4,7 @@ import {
   INodeType,
   INodeTypeDescription,
   IDataObject,
+  GenericValue,
   NodeOperationError,
 } from 'n8n-workflow';
 
@@ -720,7 +721,34 @@ export class ReachInbox implements INodeType {
             const listId = this.getNodeParameter('listId', i) as string;
             const leadsRaw = this.getNodeParameter('listLeads', i) as string | IDataObject[];
             const leads = typeof leadsRaw === 'string' ? JSON.parse(leadsRaw) : leadsRaw;
-            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/add-leads', { leadsListId: Number(listId), leads });
+            const normalizedLeads = leads.map((lead) => {
+              const normalizedLead: IDataObject = {};
+
+              for (const [key, value] of Object.entries(lead)) {
+                if (key === 'attributes' && value && typeof value === 'object' && !Array.isArray(value)) {
+                  for (const [attributeKey, attributeValue] of Object.entries(value as IDataObject)) {
+                    if (attributeValue !== undefined && attributeValue !== null && attributeValue !== '') {
+                      normalizedLead[attributeKey] = attributeValue;
+                    }
+                  }
+                  continue;
+                }
+
+                if (value !== undefined && value !== null && value !== '') {
+                  normalizedLead[key] = value as GenericValue;
+                }
+              }
+
+              return normalizedLead;
+            });
+
+            const newCoreVariables = [...new Set(normalizedLeads.flatMap((lead) => Object.keys(lead).filter((key) => key !== 'email')))];
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/add-leads', {
+              leadsListId: Number(listId),
+              leads: normalizedLeads,
+              newCoreVariables,
+              duplicates: [],
+            });
           }
         }
 

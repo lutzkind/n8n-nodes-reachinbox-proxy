@@ -687,7 +687,30 @@ class ReachInbox {
                         const listId = this.getNodeParameter('listId', i);
                         const leadsRaw = this.getNodeParameter('listLeads', i);
                         const leads = typeof leadsRaw === 'string' ? JSON.parse(leadsRaw) : leadsRaw;
-                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/add-leads', { leadsListId: Number(listId), leads });
+                        const normalizedLeads = leads.map((lead) => {
+                            const normalizedLead = {};
+                            for (const [key, value] of Object.entries(lead)) {
+                                if (key === 'attributes' && value && typeof value === 'object' && !Array.isArray(value)) {
+                                    for (const [attributeKey, attributeValue] of Object.entries(value)) {
+                                        if (attributeValue !== undefined && attributeValue !== null && attributeValue !== '') {
+                                            normalizedLead[attributeKey] = attributeValue;
+                                        }
+                                    }
+                                    continue;
+                                }
+                                if (value !== undefined && value !== null && value !== '') {
+                                    normalizedLead[key] = value;
+                                }
+                            }
+                            return normalizedLead;
+                        });
+                        const newCoreVariables = [...new Set(normalizedLeads.flatMap((lead) => Object.keys(lead).filter((key) => key !== 'email')))];
+                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/add-leads', {
+                            leadsListId: Number(listId),
+                            leads: normalizedLeads,
+                            newCoreVariables,
+                            duplicates: [],
+                        });
                     }
                 }
                 // ─── ACCOUNT ───────────────────────────────────────────────
