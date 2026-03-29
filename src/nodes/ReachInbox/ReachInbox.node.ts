@@ -30,6 +30,7 @@ export class ReachInbox implements INodeType {
         noDataExpression: true,
         options: [
           { name: 'Campaign', value: 'campaign' },
+          { name: 'Sequence', value: 'sequence' },
           { name: 'Subsequence', value: 'subsequence' },
           { name: 'Lead', value: 'lead' },
           { name: 'Lead List', value: 'leadList' },
@@ -66,7 +67,23 @@ export class ReachInbox implements INodeType {
       },
 
       // ═══════════════════════════════════════════════════════════════
-      // LEAD OPERATIONS
+      // SEQUENCE OPERATIONS
+      // ═══════════════════════════════════════════════════════════════
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['sequence'] } },
+        options: [
+          { name: 'Get', value: 'get', description: 'Get campaign sequences', action: 'Get campaign sequences' },
+          { name: 'Save', value: 'save', description: 'Save campaign sequences', action: 'Save campaign sequences' },
+        ],
+        default: 'get',
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      // SUBSEQUENCE OPERATIONS
       // ═══════════════════════════════════════════════════════════════
       {
         displayName: 'Operation',
@@ -340,6 +357,33 @@ export class ReachInbox implements INodeType {
         default: '',
         placeholder: 'YYYY-MM-DD',
         displayOptions: { show: { resource: ['campaign', 'analytics'], operation: ['totalAnalytics', 'total'] } },
+      },
+
+      // ─── SEQUENCE ────────────────────────────────────────────────
+      {
+        displayName: 'Campaign ID',
+        name: 'campaignId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['sequence'], operation: ['get', 'save'] } },
+      },
+      {
+        displayName: 'Sequences',
+        name: 'sequences',
+        type: 'json',
+        required: true,
+        default: '[{"steps":[]}]',
+        description: 'Full sequence payload as returned by ReachInbox',
+        displayOptions: { show: { resource: ['sequence'], operation: ['save'] } },
+      },
+      {
+        displayName: 'Core Variables',
+        name: 'coreVariables',
+        type: 'json',
+        default: '[]',
+        description: 'Optional core variables payload',
+        displayOptions: { show: { resource: ['sequence'], operation: ['save'] } },
       },
 
       // ─── SUBSEQUENCE ─────────────────────────────────────────────
@@ -757,6 +801,27 @@ export class ReachInbox implements INodeType {
             const endDate = this.getNodeParameter('endDate', i, '') as string;
             const qs = [startDate && `startDate=${startDate}`, endDate && `endDate=${endDate}`].filter(Boolean).join('&');
             result = await apiRequest.call(this, baseUrl, 'POST', `/api/v1/campaign/total-analytics${qs ? '?' + qs : ''}`, {});
+          }
+        }
+
+        // ─── SEQUENCE ──────────────────────────────────────────────
+        else if (resource === 'sequence') {
+          if (operation === 'get') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/sequences?campaignId=${Number(campaignId)}`);
+          }
+          else if (operation === 'save') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const sequences = this.getNodeParameter('sequences', i) as IDataObject[] | IDataObject;
+            const coreVariables = this.getNodeParameter('coreVariables', i, []) as IDataObject[] | IDataObject;
+            const payload: IDataObject = {
+              campaignId: String(campaignId),
+              sequences,
+            };
+            if (coreVariables && (Array.isArray(coreVariables) ? coreVariables.length > 0 : Object.keys(coreVariables).length > 0)) {
+              payload.coreVariables = coreVariables;
+            }
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/sequences/add', payload);
           }
         }
 
