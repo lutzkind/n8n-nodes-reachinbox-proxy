@@ -57,6 +57,10 @@ export class ReachInbox implements INodeType {
           { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
           { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
           { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
+          { name: 'Get Options', value: 'options', description: 'Get campaign configuration options', action: 'Get campaign options' },
+          { name: 'Get Schedule', value: 'schedule', description: 'Get campaign schedule details', action: 'Get campaign schedule' },
+          { name: 'List Accounts', value: 'listAccounts', description: 'List accounts attached to the campaign', action: 'List campaign accounts' },
+          { name: 'List Account Errors', value: 'listAccountErrors', description: 'List account errors for the campaign', action: 'List campaign account errors' },
           { name: 'Start', value: 'start', description: 'Start a campaign', action: 'Start a campaign' },
           { name: 'Pause', value: 'pause', description: 'Pause a campaign', action: 'Pause a campaign' },
           { name: 'Update', value: 'update', description: 'Update campaign settings', action: 'Update a campaign' },
@@ -245,7 +249,7 @@ export class ReachInbox implements INodeType {
         displayOptions: {
           show: {
             resource: ['campaign'],
-            operation: ['start', 'pause', 'update', 'analytics'],
+            operation: ['details', 'options', 'schedule', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'analytics'],
           },
         },
       },
@@ -317,6 +321,15 @@ export class ReachInbox implements INodeType {
         ],
         default: 'newest',
         displayOptions: { show: { resource: ['campaign'], operation: ['getAll'] } },
+      },
+
+      // ─── CAMPAIGN: Details/Diagnostics ───────────────────────────
+      {
+        displayName: 'Account Limit',
+        name: 'campaignAccountLimit',
+        type: 'number',
+        default: 5,
+        displayOptions: { show: { resource: ['campaign'], operation: ['listAccounts', 'listAccountErrors'] } },
       },
 
       // ─── CAMPAIGN: Update ─────────────────────────────────────────
@@ -774,6 +787,24 @@ export class ReachInbox implements INodeType {
           else if (operation === 'details') {
             const campaignId = this.getNodeParameter('campaignId', i) as string;
             result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${Number(campaignId)}`);
+          }
+          else if (operation === 'options') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/options?campaignId=${Number(campaignId)}`);
+          }
+          else if (operation === 'schedule') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/schedule?campaignId=${Number(campaignId)}`);
+          }
+          else if (operation === 'listAccounts') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const limit = this.getNodeParameter('campaignAccountLimit', i, 5) as number;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list-accounts?campaignId=${Number(campaignId)}&limit=${limit}`);
+          }
+          else if (operation === 'listAccountErrors') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const limit = this.getNodeParameter('campaignAccountLimit', i, 5) as number;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list-accounts-errors?campaignId=${Number(campaignId)}&limit=${limit}`);
           }
           else if (operation === 'create') {
             const name = this.getNodeParameter('name', i) as string;
