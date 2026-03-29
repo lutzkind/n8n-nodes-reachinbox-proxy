@@ -30,6 +30,7 @@ export class ReachInbox implements INodeType {
         noDataExpression: true,
         options: [
           { name: 'Campaign', value: 'campaign' },
+          { name: 'Subsequence', value: 'subsequence' },
           { name: 'Lead', value: 'lead' },
           { name: 'Lead List', value: 'leadList' },
           { name: 'Account', value: 'account' },
@@ -54,6 +55,7 @@ export class ReachInbox implements INodeType {
         options: [
           { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
           { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
+          { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
           { name: 'Start', value: 'start', description: 'Start a campaign', action: 'Start a campaign' },
           { name: 'Pause', value: 'pause', description: 'Pause a campaign', action: 'Pause a campaign' },
           { name: 'Update', value: 'update', description: 'Update campaign settings', action: 'Update a campaign' },
@@ -61,6 +63,24 @@ export class ReachInbox implements INodeType {
           { name: 'Get Total Analytics', value: 'totalAnalytics', description: 'Get total analytics summary', action: 'Get total analytics' },
         ],
         default: 'getAll',
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      // LEAD OPERATIONS
+      // ═══════════════════════════════════════════════════════════════
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['subsequence'] } },
+        options: [
+          { name: 'List', value: 'list', description: 'List subsequences for a campaign', action: 'List subsequences' },
+          { name: 'Get Details', value: 'details', description: 'Get subsequence details', action: 'Get subsequence details' },
+          { name: 'Create', value: 'create', description: 'Create a subsequence', action: 'Create a subsequence' },
+          { name: 'Update', value: 'update', description: 'Update a subsequence', action: 'Update a subsequence' },
+        ],
+        default: 'list',
       },
 
       // ═══════════════════════════════════════════════════════════════
@@ -320,6 +340,61 @@ export class ReachInbox implements INodeType {
         default: '',
         placeholder: 'YYYY-MM-DD',
         displayOptions: { show: { resource: ['campaign', 'analytics'], operation: ['totalAnalytics', 'total'] } },
+      },
+
+      // ─── SUBSEQUENCE ─────────────────────────────────────────────
+      {
+        displayName: 'Campaign ID',
+        name: 'campaignId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['subsequence'], operation: ['list', 'create'] } },
+      },
+      {
+        displayName: 'Subsequence ID',
+        name: 'subsequenceId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['subsequence'], operation: ['details', 'update'] } },
+      },
+      {
+        displayName: 'Name',
+        name: 'name',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+      },
+      {
+        displayName: 'Subject',
+        name: 'subject',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+      },
+      {
+        displayName: 'Body',
+        name: 'body',
+        type: 'string',
+        typeOptions: { rows: 6 },
+        default: '',
+        displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+      },
+      {
+        displayName: 'Additional Fields',
+        name: 'subsequenceAdditionalFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        default: {},
+        displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+        options: [
+          { displayName: 'Lead Status Condition', name: 'leadStatusCondition', type: 'string', default: '' },
+          { displayName: 'Lead Activity Condition', name: 'leadActivityCondition', type: 'string', default: '' },
+          { displayName: 'Lead Reply Text', name: 'leadReplyText', type: 'string', default: '' },
+          { displayName: 'Lead Reply Context', name: 'leadReplyContext', type: 'string', default: '' },
+        ],
       },
 
       // ─── LEAD: Add ────────────────────────────────────────────────
@@ -652,6 +727,10 @@ export class ReachInbox implements INodeType {
             const sort = this.getNodeParameter('sort', i, 'newest') as string;
             result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list?limit=${limit}&filter=${filter}&sort=${sort}`);
           }
+          else if (operation === 'details') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${Number(campaignId)}`);
+          }
           else if (operation === 'create') {
             const name = this.getNodeParameter('name', i) as string;
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/create', { name });
@@ -678,6 +757,36 @@ export class ReachInbox implements INodeType {
             const endDate = this.getNodeParameter('endDate', i, '') as string;
             const qs = [startDate && `startDate=${startDate}`, endDate && `endDate=${endDate}`].filter(Boolean).join('&');
             result = await apiRequest.call(this, baseUrl, 'POST', `/api/v1/campaign/total-analytics${qs ? '?' + qs : ''}`, {});
+          }
+        }
+
+        // ─── SUBSEQUENCE ────────────────────────────────────────────
+        else if (resource === 'subsequence') {
+          if (operation === 'list') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${Number(campaignId)}`);
+          }
+          else if (operation === 'details') {
+            const subsequenceId = this.getNodeParameter('subsequenceId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/details?subsequenceId=${Number(subsequenceId)}`);
+          }
+          else if (operation === 'create') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const name = this.getNodeParameter('name', i) as string;
+            const subject = this.getNodeParameter('subject', i, '') as string;
+            const body = this.getNodeParameter('body', i, '') as string;
+            const extra = this.getNodeParameter('subsequenceAdditionalFields', i, {}) as IDataObject;
+            const payload: IDataObject = { campaignId: Number(campaignId), name, subject, body, ...extra };
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/create', payload);
+          }
+          else if (operation === 'update') {
+            const subsequenceId = this.getNodeParameter('subsequenceId', i) as string;
+            const name = this.getNodeParameter('name', i) as string;
+            const subject = this.getNodeParameter('subject', i, '') as string;
+            const body = this.getNodeParameter('body', i, '') as string;
+            const extra = this.getNodeParameter('subsequenceAdditionalFields', i, {}) as IDataObject;
+            const payload: IDataObject = { subsequenceId: Number(subsequenceId), name, subject, body, ...extra };
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/update', payload);
           }
         }
 

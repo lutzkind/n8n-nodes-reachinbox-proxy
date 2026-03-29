@@ -5,11 +5,12 @@ An [n8n](https://n8n.io) community node package that gives your workflows full a
 ## Nodes
 
 ### ReachInbox
-Action node with 9 resources and 25+ operations:
+Action node with 10 resources and 29+ operations:
 
 | Resource | Operations |
 |---|---|
-| **Campaign** | List, Create, Start, Pause, Update, Get Analytics, Get Total Analytics |
+| **Campaign** | List, Create, Get Details, Start, Pause, Update, Get Analytics, Get Total Analytics |
+| **Subsequence** | List, Get Details, Create, Update |
 | **Lead** | Add, Update, Delete |
 | **Lead List** | Get All, Create, Add Leads |
 | **Account** | List Accounts, Get Warmup Analytics |

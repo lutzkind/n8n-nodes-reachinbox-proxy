@@ -24,6 +24,7 @@ class ReachInbox {
                     noDataExpression: true,
                     options: [
                         { name: 'Campaign', value: 'campaign' },
+                        { name: 'Subsequence', value: 'subsequence' },
                         { name: 'Lead', value: 'lead' },
                         { name: 'Lead List', value: 'leadList' },
                         { name: 'Account', value: 'account' },
@@ -47,6 +48,7 @@ class ReachInbox {
                     options: [
                         { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
                         { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
+                        { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
                         { name: 'Start', value: 'start', description: 'Start a campaign', action: 'Start a campaign' },
                         { name: 'Pause', value: 'pause', description: 'Pause a campaign', action: 'Pause a campaign' },
                         { name: 'Update', value: 'update', description: 'Update campaign settings', action: 'Update a campaign' },
@@ -54,6 +56,23 @@ class ReachInbox {
                         { name: 'Get Total Analytics', value: 'totalAnalytics', description: 'Get total analytics summary', action: 'Get total analytics' },
                     ],
                     default: 'getAll',
+                },
+                // ═══════════════════════════════════════════════════════════════
+                // LEAD OPERATIONS
+                // ═══════════════════════════════════════════════════════════════
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: { show: { resource: ['subsequence'] } },
+                    options: [
+                        { name: 'List', value: 'list', description: 'List subsequences for a campaign', action: 'List subsequences' },
+                        { name: 'Get Details', value: 'details', description: 'Get subsequence details', action: 'Get subsequence details' },
+                        { name: 'Create', value: 'create', description: 'Create a subsequence', action: 'Create a subsequence' },
+                        { name: 'Update', value: 'update', description: 'Update a subsequence', action: 'Update a subsequence' },
+                    ],
+                    default: 'list',
                 },
                 // ═══════════════════════════════════════════════════════════════
                 // LEAD OPERATIONS
@@ -299,6 +318,60 @@ class ReachInbox {
                     default: '',
                     placeholder: 'YYYY-MM-DD',
                     displayOptions: { show: { resource: ['campaign', 'analytics'], operation: ['totalAnalytics', 'total'] } },
+                },
+                // ─── SUBSEQUENCE ─────────────────────────────────────────────
+                {
+                    displayName: 'Campaign ID',
+                    name: 'campaignId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['list', 'create'] } },
+                },
+                {
+                    displayName: 'Subsequence ID',
+                    name: 'subsequenceId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['details', 'update'] } },
+                },
+                {
+                    displayName: 'Name',
+                    name: 'name',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+                },
+                {
+                    displayName: 'Subject',
+                    name: 'subject',
+                    type: 'string',
+                    default: '',
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+                },
+                {
+                    displayName: 'Body',
+                    name: 'body',
+                    type: 'string',
+                    typeOptions: { rows: 6 },
+                    default: '',
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+                },
+                {
+                    displayName: 'Additional Fields',
+                    name: 'subsequenceAdditionalFields',
+                    type: 'collection',
+                    placeholder: 'Add Field',
+                    default: {},
+                    displayOptions: { show: { resource: ['subsequence'], operation: ['create', 'update'] } },
+                    options: [
+                        { displayName: 'Lead Status Condition', name: 'leadStatusCondition', type: 'string', default: '' },
+                        { displayName: 'Lead Activity Condition', name: 'leadActivityCondition', type: 'string', default: '' },
+                        { displayName: 'Lead Reply Text', name: 'leadReplyText', type: 'string', default: '' },
+                        { displayName: 'Lead Reply Context', name: 'leadReplyContext', type: 'string', default: '' },
+                    ],
                 },
                 // ─── LEAD: Add ────────────────────────────────────────────────
                 {
@@ -617,6 +690,10 @@ class ReachInbox {
                         const sort = this.getNodeParameter('sort', i, 'newest');
                         result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list?limit=${limit}&filter=${filter}&sort=${sort}`);
                     }
+                    else if (operation === 'details') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${Number(campaignId)}`);
+                    }
                     else if (operation === 'create') {
                         const name = this.getNodeParameter('name', i);
                         result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/create', { name });
@@ -643,6 +720,35 @@ class ReachInbox {
                         const endDate = this.getNodeParameter('endDate', i, '');
                         const qs = [startDate && `startDate=${startDate}`, endDate && `endDate=${endDate}`].filter(Boolean).join('&');
                         result = await apiRequest.call(this, baseUrl, 'POST', `/api/v1/campaign/total-analytics${qs ? '?' + qs : ''}`, {});
+                    }
+                }
+                // ─── SUBSEQUENCE ────────────────────────────────────────────
+                else if (resource === 'subsequence') {
+                    if (operation === 'list') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${Number(campaignId)}`);
+                    }
+                    else if (operation === 'details') {
+                        const subsequenceId = this.getNodeParameter('subsequenceId', i);
+                        result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/details?subsequenceId=${Number(subsequenceId)}`);
+                    }
+                    else if (operation === 'create') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        const name = this.getNodeParameter('name', i);
+                        const subject = this.getNodeParameter('subject', i, '');
+                        const body = this.getNodeParameter('body', i, '');
+                        const extra = this.getNodeParameter('subsequenceAdditionalFields', i, {});
+                        const payload = { campaignId: Number(campaignId), name, subject, body, ...extra };
+                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/create', payload);
+                    }
+                    else if (operation === 'update') {
+                        const subsequenceId = this.getNodeParameter('subsequenceId', i);
+                        const name = this.getNodeParameter('name', i);
+                        const subject = this.getNodeParameter('subject', i, '');
+                        const body = this.getNodeParameter('body', i, '');
+                        const extra = this.getNodeParameter('subsequenceAdditionalFields', i, {});
+                        const payload = { subsequenceId: Number(subsequenceId), name, subject, body, ...extra };
+                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/update', payload);
                     }
                 }
                 // ─── LEAD ──────────────────────────────────────────────────
