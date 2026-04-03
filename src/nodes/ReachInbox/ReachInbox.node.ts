@@ -200,6 +200,8 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['blocklist'] } },
         options: [
           { name: 'Add', value: 'add', description: 'Add emails/domains/keywords to blocklist', action: 'Add to blocklist' },
+          { name: 'Get', value: 'get', description: 'Get blocklist entries', action: 'Get blocklist' },
+          { name: 'Delete', value: 'delete', description: 'Remove entries from blocklist', action: 'Delete from blocklist' },
         ],
         default: 'add',
       },
@@ -725,6 +727,30 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['blocklist'], operation: ['add'] } },
       },
 
+      // ─── BLOCKLIST: Get ───────────────────────────────────────────
+      {
+        displayName: 'Table',
+        name: 'blocklistTable',
+        type: 'options',
+        options: [
+          { name: 'All', value: '' },
+          { name: 'Emails', value: 'emails' },
+          { name: 'Domains', value: 'domains' },
+          { name: 'Keywords', value: 'keywords' },
+          { name: 'Reply Keywords', value: 'repliesKeywords' },
+        ],
+        default: '',
+        displayOptions: { show: { resource: ['blocklist'], operation: ['get', 'delete'] } },
+      },
+      {
+        displayName: 'IDs / Values to Delete (comma-separated)',
+        name: 'blocklistIds',
+        type: 'string',
+        default: '',
+        description: 'Email addresses, domains, or keywords to remove',
+        displayOptions: { show: { resource: ['blocklist'], operation: ['delete'] } },
+      },
+
       // ─── WEBHOOK: Subscribe ───────────────────────────────────────
       {
         displayName: 'Campaign ID',
@@ -1029,7 +1055,18 @@ export class ReachInbox implements INodeType {
             if (domainsStr) body.domains = domainsStr.split(',').map((s) => s.trim());
             if (keywordsStr) body.keywords = keywordsStr.split(',').map((s) => s.trim());
             if (repliesStr) body.repliesKeywords = repliesStr.split(',').map((s) => s.trim());
-            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/block-list', body);
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/blocklist/add', body);
+          }
+          else if (operation === 'get') {
+            const table = this.getNodeParameter('blocklistTable', i, '') as string;
+            const path = table ? `/api/v1/blocklist/${table}` : '/api/v1/blocklist';
+            result = await apiRequest.call(this, baseUrl, 'GET', path);
+          }
+          else if (operation === 'delete') {
+            const table = this.getNodeParameter('blocklistTable', i, '') as string;
+            const idsStr = this.getNodeParameter('blocklistIds', i, '') as string;
+            const ids = idsStr.split(',').map((s) => s.trim()).filter(Boolean);
+            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/blocklist/${table}`, { ids });
           }
         }
 
