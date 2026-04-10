@@ -115,6 +115,7 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['lead'] } },
         options: [
           { name: 'Add', value: 'add', description: 'Add leads to a campaign', action: 'Add leads to campaign' },
+          { name: 'Get', value: 'get', description: 'Get a single lead by email', action: 'Get a lead' },
           { name: 'Update', value: 'update', description: 'Update a lead', action: 'Update a lead' },
           { name: 'Delete', value: 'delete', description: 'Delete leads from campaign', action: 'Delete leads' },
         ],
@@ -133,7 +134,9 @@ export class ReachInbox implements INodeType {
         options: [
           { name: 'Create', value: 'create', description: 'Create a lead list', action: 'Create lead list' },
           { name: 'Get All', value: 'getAll', description: 'Get all lead lists', action: 'Get all lead lists' },
+          { name: 'Get Leads', value: 'getLeads', description: 'Get leads in a list', action: 'Get leads in list' },
           { name: 'Add Leads', value: 'addLeads', description: 'Add leads to a list', action: 'Add leads to list' },
+          { name: 'Delete', value: 'delete', description: 'Delete a lead list', action: 'Delete lead list' },
         ],
         default: 'getAll',
       },
@@ -233,6 +236,7 @@ export class ReachInbox implements INodeType {
         options: [
           { name: 'Get All', value: 'getAll', description: 'List all webhook subscriptions', action: 'Get all webhooks' },
           { name: 'Subscribe', value: 'subscribe', description: 'Subscribe to a webhook event', action: 'Subscribe to webhook' },
+          { name: 'Unsubscribe', value: 'unsubscribe', description: 'Unsubscribe from a webhook', action: 'Unsubscribe webhook' },
         ],
         default: 'getAll',
       },
@@ -264,9 +268,19 @@ export class ReachInbox implements INodeType {
         displayOptions: {
           show: {
             resource: ['lead'],
-            operation: ['add', 'update', 'delete'],
+            operation: ['add', 'get', 'update', 'delete'],
           },
         },
+      },
+      // ─── LEAD: Get ────────────────────────────────────────────────
+      {
+        displayName: 'Lead Email',
+        name: 'leadEmail',
+        type: 'string',
+        required: true,
+        default: '',
+        description: 'Email address of the lead to retrieve',
+        displayOptions: { show: { resource: ['lead'], operation: ['get'] } },
       },
       {
         displayName: 'Campaign ID',
@@ -572,6 +586,40 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['leadList'], operation: ['addLeads'] } },
       },
 
+      // ─── LEAD LIST: Get Leads ─────────────────────────────────────
+      {
+        displayName: 'List ID',
+        name: 'listId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+      },
+      {
+        displayName: 'Limit',
+        name: 'limit',
+        type: 'number',
+        default: 50,
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+      },
+      {
+        displayName: 'Offset',
+        name: 'offset',
+        type: 'number',
+        default: 0,
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+      },
+
+      // ─── LEAD LIST: Delete ────────────────────────────────────────
+      {
+        displayName: 'List ID',
+        name: 'listId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['leadList'], operation: ['delete'] } },
+      },
+
       // ─── ACCOUNT: Get All ─────────────────────────────────────────
       {
         displayName: 'Limit',
@@ -786,6 +834,17 @@ export class ReachInbox implements INodeType {
         default: '',
         displayOptions: { show: { resource: ['webhook'], operation: ['subscribe'] } },
       },
+
+      // ─── WEBHOOK: Unsubscribe ─────────────────────────────────────
+      {
+        displayName: 'Webhook ID',
+        name: 'webhookId',
+        type: 'string',
+        required: true,
+        default: '',
+        description: 'ID of the webhook subscription to remove (from Get All output)',
+        displayOptions: { show: { resource: ['webhook'], operation: ['unsubscribe'] } },
+      },
     ],
   };
 
@@ -921,6 +980,10 @@ export class ReachInbox implements INodeType {
             const duplicates = this.getNodeParameter('duplicates', i, 'skip') as string;
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/add', { campaignId: Number(campaignId), leads, duplicates });
           }
+          else if (operation === 'get') {
+            const leadEmail = this.getNodeParameter('leadEmail', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/leads/get?campaignId=${Number(campaignId)}&email=${encodeURIComponent(leadEmail)}`);
+          }
           else if (operation === 'update') {
             const leadId = this.getNodeParameter('leadId', i) as string;
             const fields = this.getNodeParameter('leadUpdateFields', i, {}) as IDataObject;
@@ -980,6 +1043,16 @@ export class ReachInbox implements INodeType {
               newCoreVariables,
               duplicates: [],
             });
+          }
+          else if (operation === 'getLeads') {
+            const listId = this.getNodeParameter('listId', i) as string;
+            const limit = this.getNodeParameter('limit', i, 50) as number;
+            const offset = this.getNodeParameter('offset', i, 0) as number;
+            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/leads-list/${Number(listId)}/leads?limit=${limit}&offset=${offset}`);
+          }
+          else if (operation === 'delete') {
+            const listId = this.getNodeParameter('listId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/leads-list/${Number(listId)}`);
           }
         }
 
@@ -1092,6 +1165,10 @@ export class ReachInbox implements INodeType {
               callbackUrl,
               allCampaigns: false,
             });
+          }
+          else if (operation === 'unsubscribe') {
+            const webhookId = this.getNodeParameter('webhookId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/webhook/unsubscribe/${webhookId}`);
           }
         }
 

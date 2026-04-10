@@ -105,6 +105,7 @@ class ReachInbox {
                     displayOptions: { show: { resource: ['lead'] } },
                     options: [
                         { name: 'Add', value: 'add', description: 'Add leads to a campaign', action: 'Add leads to campaign' },
+                        { name: 'Get', value: 'get', description: 'Get a single lead by email', action: 'Get a lead' },
                         { name: 'Update', value: 'update', description: 'Update a lead', action: 'Update a lead' },
                         { name: 'Delete', value: 'delete', description: 'Delete leads from campaign', action: 'Delete leads' },
                     ],
@@ -122,7 +123,9 @@ class ReachInbox {
                     options: [
                         { name: 'Create', value: 'create', description: 'Create a lead list', action: 'Create lead list' },
                         { name: 'Get All', value: 'getAll', description: 'Get all lead lists', action: 'Get all lead lists' },
+                        { name: 'Get Leads', value: 'getLeads', description: 'Get leads in a list', action: 'Get leads in list' },
                         { name: 'Add Leads', value: 'addLeads', description: 'Add leads to a list', action: 'Add leads to list' },
+                        { name: 'Delete', value: 'delete', description: 'Delete a lead list', action: 'Delete lead list' },
                     ],
                     default: 'getAll',
                 },
@@ -185,6 +188,8 @@ class ReachInbox {
                     displayOptions: { show: { resource: ['blocklist'] } },
                     options: [
                         { name: 'Add', value: 'add', description: 'Add emails/domains/keywords to blocklist', action: 'Add to blocklist' },
+                        { name: 'Get', value: 'get', description: 'Get blocklist entries', action: 'Get blocklist' },
+                        { name: 'Delete', value: 'delete', description: 'Remove entries from blocklist', action: 'Delete from blocklist' },
                     ],
                     default: 'add',
                 },
@@ -214,6 +219,7 @@ class ReachInbox {
                     options: [
                         { name: 'Get All', value: 'getAll', description: 'List all webhook subscriptions', action: 'Get all webhooks' },
                         { name: 'Subscribe', value: 'subscribe', description: 'Subscribe to a webhook event', action: 'Subscribe to webhook' },
+                        { name: 'Unsubscribe', value: 'unsubscribe', description: 'Unsubscribe from a webhook', action: 'Unsubscribe webhook' },
                     ],
                     default: 'getAll',
                 },
@@ -243,9 +249,19 @@ class ReachInbox {
                     displayOptions: {
                         show: {
                             resource: ['lead'],
-                            operation: ['add', 'update', 'delete'],
+                            operation: ['add', 'get', 'update', 'delete'],
                         },
                     },
+                },
+                // ─── LEAD: Get ────────────────────────────────────────────────
+                {
+                    displayName: 'Lead Email',
+                    name: 'leadEmail',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    description: 'Email address of the lead to retrieve',
+                    displayOptions: { show: { resource: ['lead'], operation: ['get'] } },
                 },
                 {
                     displayName: 'Campaign ID',
@@ -537,6 +553,38 @@ class ReachInbox {
                     default: '[{"email":"example@domain.com","firstName":"John","lastName":"Doe"}]',
                     displayOptions: { show: { resource: ['leadList'], operation: ['addLeads'] } },
                 },
+                // ─── LEAD LIST: Get Leads ─────────────────────────────────────
+                {
+                    displayName: 'List ID',
+                    name: 'listId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+                },
+                {
+                    displayName: 'Limit',
+                    name: 'limit',
+                    type: 'number',
+                    default: 50,
+                    displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+                },
+                {
+                    displayName: 'Offset',
+                    name: 'offset',
+                    type: 'number',
+                    default: 0,
+                    displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+                },
+                // ─── LEAD LIST: Delete ────────────────────────────────────────
+                {
+                    displayName: 'List ID',
+                    name: 'listId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    displayOptions: { show: { resource: ['leadList'], operation: ['delete'] } },
+                },
                 // ─── ACCOUNT: Get All ─────────────────────────────────────────
                 {
                     displayName: 'Limit',
@@ -688,6 +736,29 @@ class ReachInbox {
                     default: '',
                     displayOptions: { show: { resource: ['blocklist'], operation: ['add'] } },
                 },
+                // ─── BLOCKLIST: Get ───────────────────────────────────────────
+                {
+                    displayName: 'Table',
+                    name: 'blocklistTable',
+                    type: 'options',
+                    options: [
+                        { name: 'All', value: '' },
+                        { name: 'Emails', value: 'emails' },
+                        { name: 'Domains', value: 'domains' },
+                        { name: 'Keywords', value: 'keywords' },
+                        { name: 'Reply Keywords', value: 'repliesKeywords' },
+                    ],
+                    default: '',
+                    displayOptions: { show: { resource: ['blocklist'], operation: ['get', 'delete'] } },
+                },
+                {
+                    displayName: 'IDs / Values to Delete (comma-separated)',
+                    name: 'blocklistIds',
+                    type: 'string',
+                    default: '',
+                    description: 'Email addresses, domains, or keywords to remove',
+                    displayOptions: { show: { resource: ['blocklist'], operation: ['delete'] } },
+                },
                 // ─── WEBHOOK: Subscribe ───────────────────────────────────────
                 {
                     displayName: 'Campaign ID',
@@ -722,6 +793,16 @@ class ReachInbox {
                     required: true,
                     default: '',
                     displayOptions: { show: { resource: ['webhook'], operation: ['subscribe'] } },
+                },
+                // ─── WEBHOOK: Unsubscribe ─────────────────────────────────────
+                {
+                    displayName: 'Webhook ID',
+                    name: 'webhookId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    description: 'ID of the webhook subscription to remove (from Get All output)',
+                    displayOptions: { show: { resource: ['webhook'], operation: ['unsubscribe'] } },
                 },
             ],
         };
@@ -852,6 +933,10 @@ class ReachInbox {
                         const duplicates = this.getNodeParameter('duplicates', i, 'skip');
                         result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/add', { campaignId: Number(campaignId), leads, duplicates });
                     }
+                    else if (operation === 'get') {
+                        const leadEmail = this.getNodeParameter('leadEmail', i);
+                        result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/leads/get?campaignId=${Number(campaignId)}&email=${encodeURIComponent(leadEmail)}`);
+                    }
                     else if (operation === 'update') {
                         const leadId = this.getNodeParameter('leadId', i);
                         const fields = this.getNodeParameter('leadUpdateFields', i, {});
@@ -909,6 +994,16 @@ class ReachInbox {
                             newCoreVariables,
                             duplicates: [],
                         });
+                    }
+                    else if (operation === 'getLeads') {
+                        const listId = this.getNodeParameter('listId', i);
+                        const limit = this.getNodeParameter('limit', i, 50);
+                        const offset = this.getNodeParameter('offset', i, 0);
+                        result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/leads-list/${Number(listId)}/leads?limit=${limit}&offset=${offset}`);
+                    }
+                    else if (operation === 'delete') {
+                        const listId = this.getNodeParameter('listId', i);
+                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/leads-list/${Number(listId)}`);
                     }
                 }
                 // ─── ACCOUNT ───────────────────────────────────────────────
@@ -984,7 +1079,18 @@ class ReachInbox {
                             body.keywords = keywordsStr.split(',').map((s) => s.trim());
                         if (repliesStr)
                             body.repliesKeywords = repliesStr.split(',').map((s) => s.trim());
-                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/block-list', body);
+                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/blocklist/add', body);
+                    }
+                    else if (operation === 'get') {
+                        const table = this.getNodeParameter('blocklistTable', i, '');
+                        const path = table ? `/api/v1/blocklist/${table}` : '/api/v1/blocklist';
+                        result = await apiRequest.call(this, baseUrl, 'GET', path);
+                    }
+                    else if (operation === 'delete') {
+                        const table = this.getNodeParameter('blocklistTable', i, '');
+                        const idsStr = this.getNodeParameter('blocklistIds', i, '');
+                        const ids = idsStr.split(',').map((s) => s.trim()).filter(Boolean);
+                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/blocklist/${table}`, { ids });
                     }
                 }
                 // ─── TAG ───────────────────────────────────────────────────
@@ -1008,6 +1114,10 @@ class ReachInbox {
                             callbackUrl,
                             allCampaigns: false,
                         });
+                    }
+                    else if (operation === 'unsubscribe') {
+                        const webhookId = this.getNodeParameter('webhookId', i);
+                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/webhook/unsubscribe/${webhookId}`);
                     }
                 }
                 returnData.push(result);
