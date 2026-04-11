@@ -543,7 +543,7 @@ class ReachInbox {
                     type: 'string',
                     required: true,
                     default: '',
-                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads'] } },
+                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'delete'] } },
                 },
                 {
                     displayName: 'Leads (JSON)',
@@ -1003,7 +1003,7 @@ class ReachInbox {
                     }
                     else if (operation === 'delete') {
                         const listId = this.getNodeParameter('listId', i);
-                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/leads-list/${Number(listId)}`);
+                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/leads-list/delete?leadsListId=${Number(listId)}`);
                     }
                 }
                 // ─── ACCOUNT ───────────────────────────────────────────────

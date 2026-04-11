@@ -575,7 +575,7 @@ export class ReachInbox implements INodeType {
         type: 'string',
         required: true,
         default: '',
-        displayOptions: { show: { resource: ['leadList'], operation: ['addLeads'] } },
+        displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'delete'] } },
       },
       {
         displayName: 'Leads (JSON)',
@@ -1052,7 +1052,12 @@ export class ReachInbox implements INodeType {
           }
           else if (operation === 'delete') {
             const listId = this.getNodeParameter('listId', i) as string;
-            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/leads-list/${Number(listId)}`);
+            result = await apiRequest.call(
+              this,
+              baseUrl,
+              'DELETE',
+              `/api/v1/leads-list/delete?leadsListId=${Number(listId)}`,
+            );
           }
         }
 
