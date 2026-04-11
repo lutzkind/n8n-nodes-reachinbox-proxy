@@ -13,7 +13,7 @@ Action node with 11 resources and 35+ operations:
 | **Sequence** | Get, Save |
 | **Subsequence** | List, Get Details, Create, Update |
 | **Lead** | Add, Update, Delete |
-| **Lead List** | Get All, Create, Add Leads |
+| **Lead List** | Get All, Get Leads, Create, Add Leads, Add To Campaign, Delete |
 | **Account** | List Accounts, Get Warmup Analytics |
 | **Analytics** | Get Campaign Analytics, Get Total Analytics |
 | **Onebox** | List Threads, Send Reply, Mark All Read, Get Unread Count, Search |

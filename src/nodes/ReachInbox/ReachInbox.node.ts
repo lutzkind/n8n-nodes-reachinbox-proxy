@@ -136,6 +136,7 @@ export class ReachInbox implements INodeType {
           { name: 'Get All', value: 'getAll', description: 'Get all lead lists', action: 'Get all lead lists' },
           { name: 'Get Leads', value: 'getLeads', description: 'Get leads in a list', action: 'Get leads in list' },
           { name: 'Add Leads', value: 'addLeads', description: 'Add leads to a list', action: 'Add leads to list' },
+          { name: 'Add To Campaign', value: 'addToCampaign', description: 'Add all leads from a list to a campaign', action: 'Add lead list to campaign' },
           { name: 'Delete', value: 'delete', description: 'Delete a lead list', action: 'Delete lead list' },
         ],
         default: 'getAll',
@@ -567,6 +568,40 @@ export class ReachInbox implements INodeType {
         default: '',
         displayOptions: { show: { resource: ['leadList'], operation: ['getAll'] } },
       },
+      {
+        displayName: 'Fetch Limit',
+        name: 'leadListLimit',
+        type: 'number',
+        default: 50,
+        typeOptions: { minValue: 1 },
+        description: 'Number of leads to fetch per request',
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads', 'addToCampaign'] } },
+      },
+      {
+        displayName: 'Offset',
+        name: 'leadListOffset',
+        type: 'number',
+        default: 0,
+        typeOptions: { minValue: 0 },
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+      },
+      {
+        displayName: 'Return All',
+        name: 'leadListReturnAll',
+        type: 'boolean',
+        default: true,
+        description: 'Whether to fetch every lead in the list',
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+      },
+      {
+        displayName: 'Max Leads',
+        name: 'leadListMaxLeads',
+        type: 'number',
+        default: 100,
+        typeOptions: { minValue: 1 },
+        description: 'Maximum number of leads to return when Return All is off',
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'], leadListReturnAll: [false] } },
+      },
 
       // ─── LEAD LIST: Add Leads ─────────────────────────────────────
       {
@@ -585,29 +620,34 @@ export class ReachInbox implements INodeType {
         default: '[{"email":"example@domain.com","firstName":"John","lastName":"Doe"}]',
         displayOptions: { show: { resource: ['leadList'], operation: ['addLeads'] } },
       },
-
-      // ─── LEAD LIST: Get Leads ─────────────────────────────────────
       {
-        displayName: 'List ID',
-        name: 'listId',
+        displayName: 'Campaign ID',
+        name: 'targetCampaignId',
         type: 'string',
         required: true,
         default: '',
-        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+        displayOptions: { show: { resource: ['leadList'], operation: ['addToCampaign'] } },
       },
       {
-        displayName: 'Limit',
-        name: 'limit',
-        type: 'number',
-        default: 50,
-        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+        displayName: 'Duplicates',
+        name: 'leadListDuplicates',
+        type: 'options',
+        options: [
+          { name: 'Skip', value: 'skip' },
+          { name: 'Update', value: 'update' },
+          { name: 'Add', value: 'add' },
+          { name: 'Error', value: 'error' },
+        ],
+        default: 'skip',
+        displayOptions: { show: { resource: ['leadList'], operation: ['addToCampaign'] } },
       },
       {
-        displayName: 'Offset',
-        name: 'offset',
-        type: 'number',
-        default: 0,
-        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads'] } },
+        displayName: 'Last Lead',
+        name: 'lastLead',
+        type: 'boolean',
+        default: false,
+        description: 'Whether to request the final page cursor variant used by ReachInbox',
+        displayOptions: { show: { resource: ['leadList'], operation: ['getLeads', 'addToCampaign'] } },
       },
 
       // ─── LEAD LIST: Delete ────────────────────────────────────────
@@ -1015,26 +1055,7 @@ export class ReachInbox implements INodeType {
             const listId = this.getNodeParameter('listId', i) as string;
             const leadsRaw = this.getNodeParameter('listLeads', i) as string | IDataObject[];
             const leads = typeof leadsRaw === 'string' ? JSON.parse(leadsRaw) : leadsRaw;
-            const normalizedLeads = leads.map((lead) => {
-              const normalizedLead: IDataObject = {};
-
-              for (const [key, value] of Object.entries(lead)) {
-                if (key === 'attributes' && value && typeof value === 'object' && !Array.isArray(value)) {
-                  for (const [attributeKey, attributeValue] of Object.entries(value as IDataObject)) {
-                    if (attributeValue !== undefined && attributeValue !== null && attributeValue !== '') {
-                      normalizedLead[attributeKey] = attributeValue;
-                    }
-                  }
-                  continue;
-                }
-
-                if (value !== undefined && value !== null && value !== '') {
-                  normalizedLead[key] = value as GenericValue;
-                }
-              }
-
-              return normalizedLead;
-            });
+            const normalizedLeads = leads.map((lead) => normalizeLeadForImport(lead));
 
             const newCoreVariables = [...new Set(normalizedLeads.flatMap((lead) => Object.keys(lead).filter((key) => key !== 'email')))];
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/add-leads', {
@@ -1046,9 +1067,74 @@ export class ReachInbox implements INodeType {
           }
           else if (operation === 'getLeads') {
             const listId = this.getNodeParameter('listId', i) as string;
-            const limit = this.getNodeParameter('limit', i, 50) as number;
-            const offset = this.getNodeParameter('offset', i, 0) as number;
-            result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/leads-list/${Number(listId)}/leads?limit=${limit}&offset=${offset}`);
+            const limit = this.getNodeParameter('leadListLimit', i, 50) as number;
+            const offset = this.getNodeParameter('leadListOffset', i, 0) as number;
+            const returnAll = this.getNodeParameter('leadListReturnAll', i, true) as boolean;
+            const maxLeads = this.getNodeParameter('leadListMaxLeads', i, 100) as number;
+            const lastLead = this.getNodeParameter('lastLead', i, false) as boolean;
+
+            result = await fetchLeadListLeads.call(this, baseUrl, {
+              listId: Number(listId),
+              limit,
+              offset,
+              returnAll,
+              maxLeads,
+              lastLead,
+            });
+          }
+          else if (operation === 'addToCampaign') {
+            const listId = this.getNodeParameter('listId', i) as string;
+            const campaignId = this.getNodeParameter('targetCampaignId', i) as string;
+            const limit = this.getNodeParameter('leadListLimit', i, 50) as number;
+            const duplicates = this.getNodeParameter('leadListDuplicates', i, 'skip') as string;
+            const lastLead = this.getNodeParameter('lastLead', i, false) as boolean;
+
+            const leadListResponse = await fetchLeadListLeads.call(this, baseUrl, {
+              listId: Number(listId),
+              limit,
+              offset: 0,
+              returnAll: true,
+              maxLeads: limit,
+              lastLead,
+            });
+
+            const rows = Array.isArray(leadListResponse.data?.rows)
+              ? leadListResponse.data.rows as IDataObject[]
+              : [];
+            const leads = rows.map((lead) => normalizeLeadForImport(lead)).filter((lead) => lead.email);
+
+            if (leads.length === 0) {
+              result = {
+                status: 200,
+                message: 'No leads found in lead list',
+                data: {
+                  leadsListId: Number(listId),
+                  campaignId: Number(campaignId),
+                  fetched: rows.length,
+                  transferred: 0,
+                },
+              };
+            } else {
+              const addResult = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/add', {
+                campaignId: Number(campaignId),
+                leads,
+                duplicates,
+              });
+
+              result = {
+                status: 200,
+                message: 'Lead list added to campaign',
+                data: {
+                  leadsListId: Number(listId),
+                  campaignId: Number(campaignId),
+                  fetched: rows.length,
+                  transferred: leads.length,
+                  duplicates,
+                  sourceAnalytics: leadListResponse.data?.analytics ?? {},
+                  campaignResponse: addResult,
+                },
+              };
+            }
           }
           else if (operation === 'delete') {
             const listId = this.getNodeParameter('listId', i) as string;
@@ -1209,4 +1295,88 @@ async function apiRequest(
 
   const response = await this.helpers.request(options);
   return response as IDataObject;
+}
+
+function normalizeLeadForImport(lead: IDataObject): IDataObject {
+  const normalizedLead: IDataObject = {};
+  const ignoredKeys = new Set([
+    'id',
+    'leadsListId',
+    'leadFinderId',
+    'validationStatus',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]);
+
+  for (const [key, value] of Object.entries(lead)) {
+    if (ignoredKeys.has(key)) continue;
+
+    if (key === 'attributes' && value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [attributeKey, attributeValue] of Object.entries(value as IDataObject)) {
+        if (attributeValue !== undefined && attributeValue !== null && attributeValue !== '') {
+          normalizedLead[attributeKey] = attributeValue;
+        }
+      }
+      continue;
+    }
+
+    if (value !== undefined && value !== null && value !== '') {
+      normalizedLead[key] = value as GenericValue;
+    }
+  }
+
+  return normalizedLead;
+}
+
+async function fetchLeadListLeads(
+  this: IExecuteFunctions,
+  baseUrl: string,
+  options: {
+    listId: number;
+    limit: number;
+    offset: number;
+    returnAll: boolean;
+    maxLeads: number;
+    lastLead: boolean;
+  },
+): Promise<IDataObject> {
+  const rows: IDataObject[] = [];
+  let analytics: IDataObject = {};
+  let currentOffset = options.offset;
+  const pageSize = Math.max(1, options.limit);
+  const targetCount = options.returnAll ? Number.POSITIVE_INFINITY : Math.max(1, options.maxLeads);
+
+  while (rows.length < targetCount) {
+    const path = `/api/v1/leads-list/all-leads?leadsListId=${options.listId}&lastLead=${options.lastLead ? 'true' : 'false'}&limit=${pageSize}&offset=${currentOffset}`;
+    const response = await apiRequest.call(this, baseUrl, 'GET', path);
+    const data = (response.data ?? {}) as IDataObject;
+    const pageRows = Array.isArray(data.rows) ? data.rows as IDataObject[] : [];
+
+    analytics = (data.analytics ?? {}) as IDataObject;
+    rows.push(...pageRows);
+
+    if (!options.returnAll) {
+      break;
+    }
+
+    if (pageRows.length < pageSize) {
+      break;
+    }
+
+    currentOffset += pageRows.length;
+  }
+
+  const slicedRows = rows.slice(0, targetCount);
+
+  return {
+    status: 200,
+    message: 'Lead list leads',
+    data: {
+      analytics,
+      rows: slicedRows,
+      count: slicedRows.length,
+      leadsListId: options.listId,
+    },
+  };
 }

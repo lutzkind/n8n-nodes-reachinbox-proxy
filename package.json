@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-reachinbox-proxy",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "n8n community node for ReachInbox — works with self-hosted proxy, no API key required",
   "keywords": ["n8n-community-node-package", "reachinbox", "email", "outreach"],
   "license": "MIT",
