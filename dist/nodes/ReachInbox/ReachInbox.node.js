@@ -578,7 +578,7 @@ class ReachInbox {
                     type: 'string',
                     required: true,
                     default: '',
-                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'delete'] } },
+                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'addToCampaign', 'delete'] } },
                 },
                 {
                     displayName: 'Leads (JSON)',
@@ -1040,53 +1040,10 @@ class ReachInbox {
                     else if (operation === 'addToCampaign') {
                         const listId = this.getNodeParameter('listId', i);
                         const campaignId = this.getNodeParameter('targetCampaignId', i);
-                        const limit = this.getNodeParameter('leadListLimit', i, 50);
-                        const duplicates = this.getNodeParameter('leadListDuplicates', i, 'skip');
-                        const lastLead = this.getNodeParameter('lastLead', i, false);
-                        const leadListResponse = await fetchLeadListLeads.call(this, baseUrl, {
-                            listId: Number(listId),
-                            limit,
-                            offset: 0,
-                            returnAll: true,
-                            maxLeads: limit,
-                            lastLead,
+                        result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/lead-list/copy-leads-to-campaign', {
+                            campaignId: Number(campaignId),
+                            leadsListId: Number(listId),
                         });
-                        const rows = Array.isArray((_a = leadListResponse.data) === null || _a === void 0 ? void 0 : _a.rows)
-                            ? leadListResponse.data.rows
-                            : [];
-                        const leads = rows.map((lead) => normalizeLeadForImport(lead)).filter((lead) => lead.email);
-                        if (leads.length === 0) {
-                            result = {
-                                status: 200,
-                                message: 'No leads found in lead list',
-                                data: {
-                                    leadsListId: Number(listId),
-                                    campaignId: Number(campaignId),
-                                    fetched: rows.length,
-                                    transferred: 0,
-                                },
-                            };
-                        }
-                        else {
-                            const addResult = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads/add', {
-                                campaignId: Number(campaignId),
-                                leads,
-                                duplicates,
-                            });
-                            result = {
-                                status: 200,
-                                message: 'Lead list added to campaign',
-                                data: {
-                                    leadsListId: Number(listId),
-                                    campaignId: Number(campaignId),
-                                    fetched: rows.length,
-                                    transferred: leads.length,
-                                    duplicates,
-                                    sourceAnalytics: (_c = (_b = leadListResponse.data) === null || _b === void 0 ? void 0 : _b.analytics) !== null && _c !== void 0 ? _c : {},
-                                    campaignResponse: addResult,
-                                },
-                            };
-                        }
                     }
                     else if (operation === 'delete') {
                         const listId = this.getNodeParameter('listId', i);
