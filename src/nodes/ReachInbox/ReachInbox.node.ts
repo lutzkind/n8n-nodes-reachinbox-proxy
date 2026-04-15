@@ -30,6 +30,7 @@ export class ReachInbox implements INodeType {
         noDataExpression: true,
         options: [
           { name: 'Campaign', value: 'campaign' },
+          { name: 'Schedule Template', value: 'scheduleTemplate' },
           { name: 'Sequence', value: 'sequence' },
           { name: 'Subsequence', value: 'subsequence' },
           { name: 'Lead', value: 'lead' },
@@ -65,8 +66,28 @@ export class ReachInbox implements INodeType {
           { name: 'Start', value: 'start', description: 'Start a campaign', action: 'Start a campaign' },
           { name: 'Pause', value: 'pause', description: 'Pause a campaign', action: 'Pause a campaign' },
           { name: 'Update', value: 'update', description: 'Update campaign settings', action: 'Update a campaign' },
+          { name: 'Update Options', value: 'updateOptions', description: 'Update full campaign options payload', action: 'Update campaign options' },
+          { name: 'Save Schedule', value: 'saveSchedule', description: 'Replace campaign schedule', action: 'Save campaign schedule' },
           { name: 'Get Analytics', value: 'analytics', description: 'Get campaign analytics', action: 'Get campaign analytics' },
           { name: 'Get Total Analytics', value: 'totalAnalytics', description: 'Get total analytics summary', action: 'Get total analytics' },
+        ],
+        default: 'getAll',
+      },
+
+      // ═══════════════════════════════════════════════════════════════
+      // SCHEDULE TEMPLATE OPERATIONS
+      // ═══════════════════════════════════════════════════════════════
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['scheduleTemplate'] } },
+        options: [
+          { name: 'Get All', value: 'getAll', description: 'Get all schedule templates', action: 'Get all schedule templates' },
+          { name: 'Create', value: 'create', description: 'Create a schedule template', action: 'Create schedule template' },
+          { name: 'Update', value: 'update', description: 'Update a schedule template', action: 'Update schedule template' },
+          { name: 'Delete', value: 'delete', description: 'Delete a schedule template', action: 'Delete schedule template' },
         ],
         default: 'getAll',
       },
@@ -258,7 +279,7 @@ export class ReachInbox implements INodeType {
         displayOptions: {
           show: {
             resource: ['campaign'],
-            operation: ['details', 'options', 'schedule', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'analytics'],
+            operation: ['details', 'options', 'schedule', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'updateOptions', 'saveSchedule', 'analytics'],
           },
         },
       },
@@ -372,6 +393,24 @@ export class ReachInbox implements INodeType {
           { displayName: 'AI Replies', name: 'aiReplies', type: 'boolean', default: false },
         ],
       },
+      {
+        displayName: 'Options Payload (JSON)',
+        name: 'campaignOptionsPayload',
+        type: 'json',
+        required: true,
+        default: '{"accountsToUse":[],"dailyLimit":300,"tracking":false,"linkTracking":false,"stopOnReply":true}',
+        description: 'Full payload for /api/v1/campaign/update-options. Include accountsToUse, tracking, limits, bounce settings, and any other supported fields.',
+        displayOptions: { show: { resource: ['campaign'], operation: ['updateOptions'] } },
+      },
+      {
+        displayName: 'Schedule Payload (JSON)',
+        name: 'campaignSchedulePayload',
+        type: 'json',
+        required: true,
+        default: '{"startDate":"2026-03-27T00:00:00+00:00","endDate":"2027-03-28T23:59:59+00:00","schedules":[{"name":"New Schedule","timing":{"from":"06:30:00","to":"14:30:00"},"timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}]}',
+        description: 'Full payload for /api/v1/schedule/add, excluding campaignId which is added automatically.',
+        displayOptions: { show: { resource: ['campaign'], operation: ['saveSchedule'] } },
+      },
 
       // ─── CAMPAIGN: Analytics ─────────────────────────────────────
       {
@@ -399,6 +438,23 @@ export class ReachInbox implements INodeType {
         required: true,
         default: '',
         displayOptions: { show: { resource: ['sequence'], operation: ['get', 'save'] } },
+      },
+      {
+        displayName: 'Template ID',
+        name: 'scheduleTemplateId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['scheduleTemplate'], operation: ['update', 'delete'] } },
+      },
+      {
+        displayName: 'Template Payload (JSON)',
+        name: 'scheduleTemplatePayload',
+        type: 'json',
+        required: true,
+        default: '{"name":"New Schedule","timing":{"from":"06:30:00","to":"14:30:00"},"timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}',
+        description: 'Payload for creating or updating a schedule template.',
+        displayOptions: { show: { resource: ['scheduleTemplate'], operation: ['create', 'update'] } },
       },
       {
         displayName: 'Sequences',
@@ -950,6 +1006,24 @@ export class ReachInbox implements INodeType {
             const updateFields = this.getNodeParameter('updateFields', i, {}) as IDataObject;
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update', { campaignId: Number(campaignId), ...updateFields });
           }
+          else if (operation === 'updateOptions') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const payloadRaw = this.getNodeParameter('campaignOptionsPayload', i) as string | IDataObject;
+            const payload = typeof payloadRaw === 'string' ? JSON.parse(payloadRaw) : payloadRaw;
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update-options', {
+              campaignId: String(campaignId),
+              ...payload,
+            });
+          }
+          else if (operation === 'saveSchedule') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const payloadRaw = this.getNodeParameter('campaignSchedulePayload', i) as string | IDataObject;
+            const payload = typeof payloadRaw === 'string' ? JSON.parse(payloadRaw) : payloadRaw;
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/schedule/add', {
+              campaignId: String(campaignId),
+              ...payload,
+            });
+          }
           else if (operation === 'delete') {
             const campaignId = this.getNodeParameter('campaignId', i) as string;
             result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/campaign/delete?campaignId=${Number(campaignId)}`);
@@ -963,6 +1037,28 @@ export class ReachInbox implements INodeType {
             const endDate = this.getNodeParameter('endDate', i, '') as string;
             const qs = [startDate && `startDate=${startDate}`, endDate && `endDate=${endDate}`].filter(Boolean).join('&');
             result = await apiRequest.call(this, baseUrl, 'POST', `/api/v1/campaign/total-analytics${qs ? '?' + qs : ''}`, {});
+          }
+        }
+
+        // ─── SCHEDULE TEMPLATE ────────────────────────────────────
+        else if (resource === 'scheduleTemplate') {
+          if (operation === 'getAll') {
+            result = await apiRequest.call(this, baseUrl, 'GET', '/api/v1/schedule/templates');
+          }
+          else if (operation === 'create') {
+            const payloadRaw = this.getNodeParameter('scheduleTemplatePayload', i) as string | IDataObject;
+            const payload = typeof payloadRaw === 'string' ? JSON.parse(payloadRaw) : payloadRaw;
+            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/schedule/save-template', payload);
+          }
+          else if (operation === 'update') {
+            const scheduleTemplateId = this.getNodeParameter('scheduleTemplateId', i) as string;
+            const payloadRaw = this.getNodeParameter('scheduleTemplatePayload', i) as string | IDataObject;
+            const payload = typeof payloadRaw === 'string' ? JSON.parse(payloadRaw) : payloadRaw;
+            result = await apiRequest.call(this, baseUrl, 'PUT', `/api/v1/schedule/template/${Number(scheduleTemplateId)}`, payload);
+          }
+          else if (operation === 'delete') {
+            const scheduleTemplateId = this.getNodeParameter('scheduleTemplateId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/schedule/template/${Number(scheduleTemplateId)}`);
           }
         }
 
