@@ -1085,10 +1085,82 @@ export class ReachInbox implements INodeType {
           else if (operation === 'addToCampaign') {
             const listId = this.getNodeParameter('listId', i) as string;
             const campaignId = this.getNodeParameter('targetCampaignId', i) as string;
-            result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/lead-list/copy-leads-to-campaign', {
-              campaignId: Number(campaignId),
-              leadsListId: Number(listId),
-            });
+            const leadListId = Number(listId);
+            const targetCampaignId = Number(campaignId);
+
+            try {
+              result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/lead-list/copy-leads-to-campaign', {
+                campaignId: targetCampaignId,
+                leadsListId: leadListId,
+              });
+            } catch (error) {
+              const statusCode = (error as any)?.response?.statusCode ?? (error as any)?.statusCode ?? (error as any)?.response?.status;
+
+              if (statusCode !== 404) {
+                throw error;
+              }
+
+              try {
+                result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/leads-list/copy-leads-to-campaign', {
+                  campaignId: targetCampaignId,
+                  leadsListId: leadListId,
+                });
+              } catch (pluralError) {
+                const pluralStatusCode = (pluralError as any)?.response?.statusCode ?? (pluralError as any)?.statusCode ?? (pluralError as any)?.response?.status;
+
+                if (pluralStatusCode !== 404) {
+                  throw pluralError;
+                }
+
+                const leadListResponse = await fetchLeadListLeads.call(this, baseUrl, {
+                  listId: leadListId,
+                  limit: 100,
+                  offset: 0,
+                  returnAll: true,
+                  maxLeads: Number.POSITIVE_INFINITY,
+                  lastLead: false,
+                });
+
+                const rows = Array.isArray((leadListResponse.data as IDataObject)?.rows)
+                  ? ((leadListResponse.data as IDataObject).rows as IDataObject[])
+                  : [];
+                const uniqueEmails = [...new Set(rows
+                  .map((lead) => String((lead.email ?? (lead.attributes as IDataObject | undefined)?.email ?? '')).trim().toLowerCase())
+                  .filter((email) => email.includes('@')))];
+
+                if (!uniqueEmails.length) {
+                  result = {
+                    status: 200,
+                    message: 'No valid emails found in lead list to add to campaign.',
+                    data: [],
+                  };
+                } else {
+                  const batchSize = 100;
+                  const responses: IDataObject[] = [];
+
+                  for (let emailIndex = 0; emailIndex < uniqueEmails.length; emailIndex += batchSize) {
+                    const emails = uniqueEmails.slice(emailIndex, emailIndex + batchSize);
+                    const response = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaigns/add-email', {
+                      campaignId: targetCampaignId,
+                      emails,
+                    });
+                    responses.push(response);
+                  }
+
+                  result = {
+                    status: 200,
+                    message: 'Added lead list emails to campaign using add-email fallback.',
+                    data: {
+                      leadsListId: leadListId,
+                      campaignId: targetCampaignId,
+                      totalEmails: uniqueEmails.length,
+                      batches: responses.length,
+                      responses,
+                    },
+                  };
+                }
+              }
+            }
           }
           else if (operation === 'delete') {
             const listId = this.getNodeParameter('listId', i) as string;
