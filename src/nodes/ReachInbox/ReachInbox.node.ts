@@ -55,6 +55,7 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['campaign'] } },
         options: [
           { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
+          { name: 'Delete', value: 'delete', description: 'Delete a campaign', action: 'Delete a campaign' },
           { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
           { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
           { name: 'Get Options', value: 'options', description: 'Get campaign configuration options', action: 'Get campaign options' },
@@ -133,6 +134,7 @@ export class ReachInbox implements INodeType {
         displayOptions: { show: { resource: ['leadList'] } },
         options: [
           { name: 'Create', value: 'create', description: 'Create a lead list', action: 'Create lead list' },
+          { name: 'Update', value: 'update', description: 'Rename or update a lead list', action: 'Update lead list' },
           { name: 'Get All', value: 'getAll', description: 'Get all lead lists', action: 'Get all lead lists' },
           { name: 'Get Leads', value: 'getLeads', description: 'Get leads in a list', action: 'Get leads in list' },
           { name: 'Add Leads', value: 'addLeads', description: 'Add leads to a list', action: 'Add leads to list' },
@@ -550,7 +552,7 @@ export class ReachInbox implements INodeType {
         type: 'string',
         required: true,
         default: '',
-        displayOptions: { show: { resource: ['leadList'], operation: ['create'] } },
+        displayOptions: { show: { resource: ['leadList'], operation: ['create', 'update'] } },
       },
 
       // ─── LEAD LIST: Get All ───────────────────────────────────────
@@ -610,7 +612,7 @@ export class ReachInbox implements INodeType {
         type: 'string',
         required: true,
         default: '',
-        displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'addToCampaign', 'delete'] } },
+        displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'addToCampaign', 'update', 'delete'] } },
       },
       {
         displayName: 'Leads (JSON)',
@@ -948,6 +950,10 @@ export class ReachInbox implements INodeType {
             const updateFields = this.getNodeParameter('updateFields', i, {}) as IDataObject;
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update', { campaignId: Number(campaignId), ...updateFields });
           }
+          else if (operation === 'delete') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/campaign/delete?campaignId=${Number(campaignId)}`);
+          }
           else if (operation === 'analytics') {
             const campaignId = this.getNodeParameter('campaignId', i) as string;
             result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/analytics', { campaignId: Number(campaignId) });
@@ -1161,6 +1167,20 @@ export class ReachInbox implements INodeType {
                 }
               }
             }
+          }
+          else if (operation === 'update') {
+            const listId = this.getNodeParameter('listId', i) as string;
+            const name = this.getNodeParameter('name', i) as string;
+            result = await apiRequest.call(
+              this,
+              baseUrl,
+              'PUT',
+              '/api/v1/leads-list/update',
+              {
+                leadsListId: Number(listId),
+                name,
+              },
+            );
           }
           else if (operation === 'delete') {
             const listId = this.getNodeParameter('listId', i) as string;

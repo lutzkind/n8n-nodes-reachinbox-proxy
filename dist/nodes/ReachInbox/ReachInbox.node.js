@@ -48,6 +48,7 @@ class ReachInbox {
                     displayOptions: { show: { resource: ['campaign'] } },
                     options: [
                         { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
+                        { name: 'Delete', value: 'delete', description: 'Delete a campaign', action: 'Delete a campaign' },
                         { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
                         { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
                         { name: 'Get Options', value: 'options', description: 'Get campaign configuration options', action: 'Get campaign options' },
@@ -122,6 +123,7 @@ class ReachInbox {
                     displayOptions: { show: { resource: ['leadList'] } },
                     options: [
                         { name: 'Create', value: 'create', description: 'Create a lead list', action: 'Create lead list' },
+                        { name: 'Update', value: 'update', description: 'Rename or update a lead list', action: 'Update lead list' },
                         { name: 'Get All', value: 'getAll', description: 'Get all lead lists', action: 'Get all lead lists' },
                         { name: 'Get Leads', value: 'getLeads', description: 'Get leads in a list', action: 'Get leads in list' },
                         { name: 'Add Leads', value: 'addLeads', description: 'Add leads to a list', action: 'Add leads to list' },
@@ -520,7 +522,7 @@ class ReachInbox {
                     type: 'string',
                     required: true,
                     default: '',
-                    displayOptions: { show: { resource: ['leadList'], operation: ['create'] } },
+                    displayOptions: { show: { resource: ['leadList'], operation: ['create', 'update'] } },
                 },
                 // ─── LEAD LIST: Get All ───────────────────────────────────────
                 {
@@ -578,7 +580,7 @@ class ReachInbox {
                     type: 'string',
                     required: true,
                     default: '',
-                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'addToCampaign', 'delete'] } },
+                    displayOptions: { show: { resource: ['leadList'], operation: ['addLeads', 'getLeads', 'addToCampaign', 'update', 'delete'] } },
                 },
                 {
                     displayName: 'Leads (JSON)',
@@ -849,7 +851,7 @@ class ReachInbox {
         };
     }
     async execute() {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const items = this.getInputData();
         const returnData = [];
         const credentials = await this.getCredentials('reachInboxProxyApi');
@@ -905,6 +907,10 @@ class ReachInbox {
                         const campaignId = this.getNodeParameter('campaignId', i);
                         const updateFields = this.getNodeParameter('updateFields', i, {});
                         result = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update', { campaignId: Number(campaignId), ...updateFields });
+                    }
+                    else if (operation === 'delete') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        result = await apiRequest.call(this, baseUrl, 'DELETE', `/api/v1/campaign/delete?campaignId=${Number(campaignId)}`);
                     }
                     else if (operation === 'analytics') {
                         const campaignId = this.getNodeParameter('campaignId', i);
@@ -1049,7 +1055,7 @@ class ReachInbox {
                             });
                         }
                         catch (error) {
-                            const statusCode = error?.response?.statusCode ?? error?.statusCode ?? error?.response?.status;
+                            const statusCode = (_c = (_b = (_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.statusCode) !== null && _b !== void 0 ? _b : error === null || error === void 0 ? void 0 : error.statusCode) !== null && _c !== void 0 ? _c : (_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.status;
                             if (statusCode !== 404) {
                                 throw error;
                             }
@@ -1060,7 +1066,7 @@ class ReachInbox {
                                 });
                             }
                             catch (pluralError) {
-                                const pluralStatusCode = pluralError?.response?.statusCode ?? pluralError?.statusCode ?? pluralError?.response?.status;
+                                const pluralStatusCode = (_g = (_f = (_e = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _e === void 0 ? void 0 : _e.statusCode) !== null && _f !== void 0 ? _f : pluralError === null || pluralError === void 0 ? void 0 : pluralError.statusCode) !== null && _g !== void 0 ? _g : (_h = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _h === void 0 ? void 0 : _h.status;
                                 if (pluralStatusCode !== 404) {
                                     throw pluralError;
                                 }
@@ -1072,11 +1078,11 @@ class ReachInbox {
                                     maxLeads: Number.POSITIVE_INFINITY,
                                     lastLead: false,
                                 });
-                                const rows = Array.isArray(leadListResponse.data?.rows)
+                                const rows = Array.isArray((_j = leadListResponse.data) === null || _j === void 0 ? void 0 : _j.rows)
                                     ? leadListResponse.data.rows
                                     : [];
                                 const uniqueEmails = [...new Set(rows
-                                        .map((lead) => String((lead.email ?? lead.attributes?.email ?? '')).trim().toLowerCase())
+                                        .map((lead) => { var _a, _b, _c; return String(((_c = (_a = lead.email) !== null && _a !== void 0 ? _a : (_b = lead.attributes) === null || _b === void 0 ? void 0 : _b.email) !== null && _c !== void 0 ? _c : '')).trim().toLowerCase(); })
                                         .filter((email) => email.includes('@')))];
                                 if (!uniqueEmails.length) {
                                     result = {
@@ -1110,6 +1116,14 @@ class ReachInbox {
                                 }
                             }
                         }
+                    }
+                    else if (operation === 'update') {
+                        const listId = this.getNodeParameter('listId', i);
+                        const name = this.getNodeParameter('name', i);
+                        result = await apiRequest.call(this, baseUrl, 'PUT', '/api/v1/leads-list/update', {
+                            leadsListId: Number(listId),
+                            name,
+                        });
                     }
                     else if (operation === 'delete') {
                         const listId = this.getNodeParameter('listId', i);
