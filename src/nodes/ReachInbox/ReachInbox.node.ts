@@ -55,10 +55,13 @@ export class ReachInbox implements INodeType {
         noDataExpression: true,
         displayOptions: { show: { resource: ['campaign'] } },
         options: [
+          { name: 'Apply Settings Bundle', value: 'applySettingsBundle', description: 'Apply a settings bundle to a campaign', action: 'Apply campaign settings bundle' },
+          { name: 'Copy Settings', value: 'copySettings', description: 'Copy editable settings from one campaign to another', action: 'Copy campaign settings' },
           { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
           { name: 'Delete', value: 'delete', description: 'Delete a campaign', action: 'Delete a campaign' },
           { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
           { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
+          { name: 'Get Settings Bundle', value: 'getSettingsBundle', description: 'Fetch the full editable settings bundle for a campaign', action: 'Get campaign settings bundle' },
           { name: 'Get Options', value: 'options', description: 'Get campaign configuration options', action: 'Get campaign options' },
           { name: 'Get Schedule', value: 'schedule', description: 'Get campaign schedule details', action: 'Get campaign schedule' },
           { name: 'List Accounts', value: 'listAccounts', description: 'List accounts attached to the campaign', action: 'List campaign accounts' },
@@ -279,9 +282,18 @@ export class ReachInbox implements INodeType {
         displayOptions: {
           show: {
             resource: ['campaign'],
-            operation: ['details', 'options', 'schedule', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'updateOptions', 'saveSchedule', 'analytics'],
+            operation: ['details', 'options', 'schedule', 'getSettingsBundle', 'applySettingsBundle', 'copySettings', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'updateOptions', 'saveSchedule', 'analytics'],
           },
         },
+      },
+      {
+        displayName: 'Source Campaign ID',
+        name: 'sourceCampaignId',
+        type: 'string',
+        required: true,
+        default: '',
+        description: 'Campaign to copy settings from',
+        displayOptions: { show: { resource: ['campaign'], operation: ['copySettings'] } },
       },
       {
         displayName: 'Campaign ID',
@@ -410,6 +422,30 @@ export class ReachInbox implements INodeType {
         default: '{"startDate":"2026-03-27T00:00:00+00:00","endDate":"2027-03-28T23:59:59+00:00","schedules":[{"name":"New Schedule","timing":{"from":"06:30:00","to":"14:30:00"},"timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}]}',
         description: 'Full payload for /api/v1/schedule/add, excluding campaignId which is added automatically.',
         displayOptions: { show: { resource: ['campaign'], operation: ['saveSchedule'] } },
+      },
+      {
+        displayName: 'Settings Bundle (JSON)',
+        name: 'campaignSettingsBundle',
+        type: 'json',
+        required: true,
+        default: '{"details":{"name":"4 - US Restaurant Operators"},"options":{"accountsToUse":["mailbox@example.com"],"dailyLimit":300,"tracking":false,"linkTracking":false,"stopOnReply":true},"schedule":{"startDate":"2026-03-27T00:00:00+00:00","endDate":"2027-03-28T23:59:59+00:00","schedules":[{"name":"New Schedule","timeFrom":"06:30:00","timeTo":"14:30:00","timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}]},"sequences":{"sequences":[{"steps":[]}],"coreVariables":[]},"subsequences":[]}',
+        description: 'Bundle produced by Get Settings Bundle. Apply Settings Bundle uses this structure directly.',
+        displayOptions: { show: { resource: ['campaign'], operation: ['applySettingsBundle'] } },
+      },
+      {
+        displayName: 'Copy Behavior',
+        name: 'campaignCopyBehavior',
+        type: 'collection',
+        placeholder: 'Add Option',
+        default: {},
+        displayOptions: { show: { resource: ['campaign'], operation: ['applySettingsBundle', 'copySettings'] } },
+        options: [
+          { displayName: 'Include Name', name: 'includeName', type: 'boolean', default: false, description: 'Copy the source campaign name to the target' },
+          { displayName: 'Include Options', name: 'includeOptions', type: 'boolean', default: true, description: 'Copy the campaign update-options payload' },
+          { displayName: 'Include Schedule', name: 'includeSchedule', type: 'boolean', default: true, description: 'Copy the campaign schedule' },
+          { displayName: 'Include Sequences', name: 'includeSequences', type: 'boolean', default: true, description: 'Copy the main campaign sequences' },
+          { displayName: 'Include Subsequences', name: 'includeSubsequences', type: 'boolean', default: true, description: 'Upsert subsequences by name on the target campaign' },
+        ],
       },
 
       // ─── CAMPAIGN: Analytics ─────────────────────────────────────
@@ -967,6 +1003,27 @@ export class ReachInbox implements INodeType {
             const sort = this.getNodeParameter('sort', i, 'newest') as string;
             result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list?limit=${limit}&filter=${filter}&sort=${sort}`);
           }
+          else if (operation === 'getSettingsBundle') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            result = await getCampaignSettingsBundle.call(this, baseUrl, Number(campaignId));
+          }
+          else if (operation === 'applySettingsBundle') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const bundleRaw = this.getNodeParameter('campaignSettingsBundle', i) as string | IDataObject;
+            const bundle = typeof bundleRaw === 'string' ? JSON.parse(bundleRaw) : bundleRaw;
+            const behavior = this.getNodeParameter('campaignCopyBehavior', i, {}) as IDataObject;
+            result = await applyCampaignSettingsBundle.call(this, baseUrl, Number(campaignId), bundle, behavior);
+          }
+          else if (operation === 'copySettings') {
+            const campaignId = this.getNodeParameter('campaignId', i) as string;
+            const sourceCampaignId = this.getNodeParameter('sourceCampaignId', i) as string;
+            const behavior = this.getNodeParameter('campaignCopyBehavior', i, {}) as IDataObject;
+            const bundleResponse = await getCampaignSettingsBundle.call(this, baseUrl, Number(sourceCampaignId));
+            const bundle = (bundleResponse.data ?? {}) as IDataObject;
+            result = await applyCampaignSettingsBundle.call(this, baseUrl, Number(campaignId), bundle, behavior);
+            result.sourceCampaignId = Number(sourceCampaignId);
+            result.targetCampaignId = Number(campaignId);
+          }
           else if (operation === 'details') {
             const campaignId = this.getNodeParameter('campaignId', i) as string;
             result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${Number(campaignId)}`);
@@ -1437,6 +1494,254 @@ async function apiRequest(
 
   const response = await this.helpers.request(options);
   return response as IDataObject;
+}
+
+async function getCampaignSettingsBundle(
+  this: IExecuteFunctions,
+  baseUrl: string,
+  campaignId: number,
+): Promise<IDataObject> {
+  const [detailsResponse, optionsResponse, scheduleResponse, sequencesResponse, subsequenceListResponse] = await Promise.all([
+    apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${campaignId}`),
+    apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/options?campaignId=${campaignId}`),
+    apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/schedule?campaignId=${campaignId}`),
+    apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/sequences?campaignId=${campaignId}`),
+    apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${campaignId}`),
+  ]);
+
+  const subsequenceRows = extractSubsequenceRows(subsequenceListResponse);
+  const subsequenceDetails = await Promise.all(
+    subsequenceRows.map(async (row) => {
+      const subsequenceId = Number(row.subsequenceId ?? row.id ?? row.subSequenceId ?? 0);
+      if (!subsequenceId) return row;
+      const response = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/details?subsequenceId=${subsequenceId}`);
+      return ((response.data ?? response) as IDataObject);
+    }),
+  );
+
+  return {
+    status: 200,
+    message: 'Campaign settings bundle',
+    data: {
+      campaignId,
+      details: (detailsResponse.data ?? detailsResponse) as IDataObject,
+      options: (optionsResponse.data ?? optionsResponse) as IDataObject,
+      schedule: (scheduleResponse.data ?? scheduleResponse) as IDataObject,
+      sequences: (sequencesResponse.data ?? sequencesResponse) as IDataObject,
+      subsequences: subsequenceDetails,
+    },
+  };
+}
+
+async function applyCampaignSettingsBundle(
+  this: IExecuteFunctions,
+  baseUrl: string,
+  campaignId: number,
+  bundle: IDataObject,
+  behavior: IDataObject,
+): Promise<IDataObject> {
+  const options = normalizeCampaignCopyBehavior(behavior);
+  const details = (bundle.details ?? {}) as IDataObject;
+  const campaignOptions = (bundle.options ?? {}) as IDataObject;
+  const schedule = (bundle.schedule ?? {}) as IDataObject;
+  const sequences = (bundle.sequences ?? {}) as IDataObject;
+  const subsequences = Array.isArray(bundle.subsequences) ? bundle.subsequences as IDataObject[] : [];
+  const responses: IDataObject = {};
+
+  if (options.includeName && details.name) {
+    responses.update = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update', {
+      campaignId: Number(campaignId),
+      name: details.name,
+    });
+  }
+
+  if (options.includeOptions && Object.keys(campaignOptions).length > 0) {
+    responses.updateOptions = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update-options', {
+      campaignId: String(campaignId),
+      ...buildCampaignUpdateOptionsPayload(campaignOptions),
+    });
+  }
+
+  if (options.includeSchedule && Object.keys(schedule).length > 0) {
+    responses.saveSchedule = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/schedule/add', {
+      campaignId: String(campaignId),
+      ...buildCampaignSchedulePayload(schedule),
+    });
+  }
+
+  if (options.includeSequences && Object.keys(sequences).length > 0) {
+    responses.saveSequences = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/sequences/add', {
+      campaignId: String(campaignId),
+      ...buildCampaignSequencePayload(sequences, details),
+    });
+  }
+
+  if (options.includeSubsequences && subsequences.length > 0) {
+    const targetSubsequenceResponse = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${campaignId}`);
+    const targetSubsequences = extractSubsequenceRows(targetSubsequenceResponse);
+    const targetByName = new Map<string, IDataObject>();
+    for (const row of targetSubsequences) {
+      const name = String(row.name ?? '').trim();
+      if (name) targetByName.set(name, row);
+    }
+
+    const subsequenceResults: IDataObject[] = [];
+    for (const sourceSubsequence of subsequences) {
+      const payload = sanitizeSubsequencePayload(sourceSubsequence);
+      const name = String(payload.name ?? '').trim();
+      if (!name) continue;
+
+      const existing = targetByName.get(name);
+      if (existing) {
+        const subsequenceId = Number(existing.subsequenceId ?? existing.id ?? existing.subSequenceId ?? 0);
+        if (!subsequenceId) continue;
+        subsequenceResults.push(await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/update', {
+          subsequenceId,
+          ...payload,
+        }));
+      } else {
+        const created = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/create', {
+          campaignId: Number(campaignId),
+          ...payload,
+        });
+        subsequenceResults.push(created);
+      }
+    }
+    responses.subsequences = subsequenceResults;
+  }
+
+  return {
+    status: 200,
+    message: 'Applied campaign settings bundle',
+    data: {
+      campaignId,
+      behavior: options,
+      responses,
+    },
+  };
+}
+
+function normalizeCampaignCopyBehavior(behavior: IDataObject): {
+  includeName: boolean;
+  includeOptions: boolean;
+  includeSchedule: boolean;
+  includeSequences: boolean;
+  includeSubsequences: boolean;
+} {
+  return {
+    includeName: Boolean(behavior.includeName ?? false),
+    includeOptions: behavior.includeOptions !== false,
+    includeSchedule: behavior.includeSchedule !== false,
+    includeSequences: behavior.includeSequences !== false,
+    includeSubsequences: behavior.includeSubsequences !== false,
+  };
+}
+
+function buildCampaignUpdateOptionsPayload(source: IDataObject): IDataObject {
+  const payload: IDataObject = {};
+  const allowedKeys = [
+    'stopOnReply',
+    'stopOnDomainReply',
+    'tracking',
+    'linkTracking',
+    'deliveryOptimizations',
+    'dailyLimit',
+    'blockquote',
+    'notificationEmail',
+    'allowRiskyEmails',
+    'unsubscribeHeader',
+    'maxNewLeads',
+    'autoOptimizeAzMetric',
+    'prioritizeNewLeads',
+    'prioritizeSubsequenceLeads',
+    'globalUnsubscribe',
+    'opportunity',
+    'automaticReschedule',
+    'providerMatchingEnabled',
+    'targetLeadEsp',
+    'bounceProtection',
+    'pausedByBounceProtection',
+    'aiTimeGapsEnabled',
+    'bounceProtectionThreshold',
+    'cc',
+    'bcc',
+    'aiReplies',
+    'accountsToUse',
+    'exclude',
+  ];
+
+  for (const key of allowedKeys) {
+    if (source[key] !== undefined) payload[key] = source[key] as GenericValue;
+  }
+
+  const minimumExtraDelay = source.minimumExtraDelay ?? source.minExtraDelay;
+  if (minimumExtraDelay !== undefined) payload.minimumExtraDelay = minimumExtraDelay as GenericValue;
+
+  const maximumExtraDelay = source.maximumExtraDelay ?? source.maxExtraDelay;
+  if (maximumExtraDelay !== undefined) payload.maximumExtraDelay = maximumExtraDelay as GenericValue;
+
+  if (payload.exclude === undefined) payload.exclude = [];
+
+  return payload;
+}
+
+function buildCampaignSchedulePayload(source: IDataObject): IDataObject {
+  const schedules = Array.isArray(source.schedules) ? source.schedules as IDataObject[] : [];
+  return {
+    startDate: source.startDate,
+    endDate: source.endDate,
+    schedules: schedules.map((schedule) => ({
+      name: schedule.name,
+      timing: {
+        from: schedule.timeFrom ?? (schedule.timing as IDataObject | undefined)?.from,
+        to: schedule.timeTo ?? (schedule.timing as IDataObject | undefined)?.to,
+      },
+      timezone: schedule.timezone,
+      days: schedule.days,
+    })),
+  };
+}
+
+function buildCampaignSequencePayload(source: IDataObject, details: IDataObject): IDataObject {
+  const payload: IDataObject = {};
+  if (source.sequences !== undefined) payload.sequences = source.sequences as GenericValue;
+  const coreVariables = source.coreVariables ?? details.coreVariables;
+  if (coreVariables !== undefined) payload.coreVariables = coreVariables as GenericValue;
+  return payload;
+}
+
+function extractSubsequenceRows(response: IDataObject): IDataObject[] {
+  const data = (response.data ?? response) as IDataObject;
+  if (Array.isArray(data)) return data as IDataObject[];
+  if (Array.isArray(data.rows)) return data.rows as IDataObject[];
+  if (Array.isArray(data.subsequences)) return data.subsequences as IDataObject[];
+  return [];
+}
+
+function sanitizeSubsequencePayload(source: IDataObject): IDataObject {
+  const payload: IDataObject = {};
+  const ignoredKeys = new Set([
+    'id',
+    'subsequenceId',
+    'subSequenceId',
+    'campaignId',
+    'userId',
+    'workspaceId',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+    'status',
+    'statusConnection',
+    'statusMessage',
+  ]);
+
+  for (const [key, value] of Object.entries(source)) {
+    if (ignoredKeys.has(key)) continue;
+    if (value === undefined) continue;
+    payload[key] = value as GenericValue;
+  }
+
+  return payload;
 }
 
 function normalizeLeadForImport(lead: IDataObject): IDataObject {

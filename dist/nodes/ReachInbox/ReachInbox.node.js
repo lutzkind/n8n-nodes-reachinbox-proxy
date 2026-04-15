@@ -48,10 +48,13 @@ class ReachInbox {
                     noDataExpression: true,
                     displayOptions: { show: { resource: ['campaign'] } },
                     options: [
+                        { name: 'Apply Settings Bundle', value: 'applySettingsBundle', description: 'Apply a settings bundle to a campaign', action: 'Apply campaign settings bundle' },
+                        { name: 'Copy Settings', value: 'copySettings', description: 'Copy editable settings from one campaign to another', action: 'Copy campaign settings' },
                         { name: 'Create', value: 'create', description: 'Create a new campaign', action: 'Create a campaign' },
                         { name: 'Delete', value: 'delete', description: 'Delete a campaign', action: 'Delete a campaign' },
                         { name: 'Get All', value: 'getAll', description: 'Get all campaigns', action: 'Get all campaigns' },
                         { name: 'Get Details', value: 'details', description: 'Get a campaign with its subsequences', action: 'Get campaign details' },
+                        { name: 'Get Settings Bundle', value: 'getSettingsBundle', description: 'Fetch the full editable settings bundle for a campaign', action: 'Get campaign settings bundle' },
                         { name: 'Get Options', value: 'options', description: 'Get campaign configuration options', action: 'Get campaign options' },
                         { name: 'Get Schedule', value: 'schedule', description: 'Get campaign schedule details', action: 'Get campaign schedule' },
                         { name: 'List Accounts', value: 'listAccounts', description: 'List accounts attached to the campaign', action: 'List campaign accounts' },
@@ -259,9 +262,18 @@ class ReachInbox {
                     displayOptions: {
                         show: {
                             resource: ['campaign'],
-                            operation: ['details', 'options', 'schedule', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'updateOptions', 'saveSchedule', 'analytics'],
+                            operation: ['details', 'options', 'schedule', 'getSettingsBundle', 'applySettingsBundle', 'copySettings', 'listAccounts', 'listAccountErrors', 'start', 'pause', 'update', 'updateOptions', 'saveSchedule', 'analytics'],
                         },
                     },
+                },
+                {
+                    displayName: 'Source Campaign ID',
+                    name: 'sourceCampaignId',
+                    type: 'string',
+                    required: true,
+                    default: '',
+                    description: 'Campaign to copy settings from',
+                    displayOptions: { show: { resource: ['campaign'], operation: ['copySettings'] } },
                 },
                 {
                     displayName: 'Campaign ID',
@@ -386,6 +398,30 @@ class ReachInbox {
                     default: '{"startDate":"2026-03-27T00:00:00+00:00","endDate":"2027-03-28T23:59:59+00:00","schedules":[{"name":"New Schedule","timing":{"from":"06:30:00","to":"14:30:00"},"timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}]}',
                     description: 'Full payload for /api/v1/schedule/add, excluding campaignId which is added automatically.',
                     displayOptions: { show: { resource: ['campaign'], operation: ['saveSchedule'] } },
+                },
+                {
+                    displayName: 'Settings Bundle (JSON)',
+                    name: 'campaignSettingsBundle',
+                    type: 'json',
+                    required: true,
+                    default: '{"details":{"name":"4 - US Restaurant Operators"},"options":{"accountsToUse":["mailbox@example.com"],"dailyLimit":300,"tracking":false,"linkTracking":false,"stopOnReply":true},"schedule":{"startDate":"2026-03-27T00:00:00+00:00","endDate":"2027-03-28T23:59:59+00:00","schedules":[{"name":"New Schedule","timeFrom":"06:30:00","timeTo":"14:30:00","timezone":"America/Belize","days":{"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false}}]},"sequences":{"sequences":[{"steps":[]}],"coreVariables":[]},"subsequences":[]}',
+                    description: 'Bundle produced by Get Settings Bundle. Apply Settings Bundle uses this structure directly.',
+                    displayOptions: { show: { resource: ['campaign'], operation: ['applySettingsBundle'] } },
+                },
+                {
+                    displayName: 'Copy Behavior',
+                    name: 'campaignCopyBehavior',
+                    type: 'collection',
+                    placeholder: 'Add Option',
+                    default: {},
+                    displayOptions: { show: { resource: ['campaign'], operation: ['applySettingsBundle', 'copySettings'] } },
+                    options: [
+                        { displayName: 'Include Name', name: 'includeName', type: 'boolean', default: false, description: 'Copy the source campaign name to the target' },
+                        { displayName: 'Include Options', name: 'includeOptions', type: 'boolean', default: true, description: 'Copy the campaign update-options payload' },
+                        { displayName: 'Include Schedule', name: 'includeSchedule', type: 'boolean', default: true, description: 'Copy the campaign schedule' },
+                        { displayName: 'Include Sequences', name: 'includeSequences', type: 'boolean', default: true, description: 'Copy the main campaign sequences' },
+                        { displayName: 'Include Subsequences', name: 'includeSubsequences', type: 'boolean', default: true, description: 'Upsert subsequences by name on the target campaign' },
+                    ],
                 },
                 // ─── CAMPAIGN: Analytics ─────────────────────────────────────
                 {
@@ -906,7 +942,7 @@ class ReachInbox {
         };
     }
     async execute() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const items = this.getInputData();
         const returnData = [];
         const credentials = await this.getCredentials('reachInboxProxyApi');
@@ -923,6 +959,27 @@ class ReachInbox {
                         const filter = this.getNodeParameter('filter', i, 'all');
                         const sort = this.getNodeParameter('sort', i, 'newest');
                         result = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/list?limit=${limit}&filter=${filter}&sort=${sort}`);
+                    }
+                    else if (operation === 'getSettingsBundle') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        result = await getCampaignSettingsBundle.call(this, baseUrl, Number(campaignId));
+                    }
+                    else if (operation === 'applySettingsBundle') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        const bundleRaw = this.getNodeParameter('campaignSettingsBundle', i);
+                        const bundle = typeof bundleRaw === 'string' ? JSON.parse(bundleRaw) : bundleRaw;
+                        const behavior = this.getNodeParameter('campaignCopyBehavior', i, {});
+                        result = await applyCampaignSettingsBundle.call(this, baseUrl, Number(campaignId), bundle, behavior);
+                    }
+                    else if (operation === 'copySettings') {
+                        const campaignId = this.getNodeParameter('campaignId', i);
+                        const sourceCampaignId = this.getNodeParameter('sourceCampaignId', i);
+                        const behavior = this.getNodeParameter('campaignCopyBehavior', i, {});
+                        const bundleResponse = await getCampaignSettingsBundle.call(this, baseUrl, Number(sourceCampaignId));
+                        const bundle = ((_a = bundleResponse.data) !== null && _a !== void 0 ? _a : {});
+                        result = await applyCampaignSettingsBundle.call(this, baseUrl, Number(campaignId), bundle, behavior);
+                        result.sourceCampaignId = Number(sourceCampaignId);
+                        result.targetCampaignId = Number(campaignId);
                     }
                     else if (operation === 'details') {
                         const campaignId = this.getNodeParameter('campaignId', i);
@@ -1149,7 +1206,7 @@ class ReachInbox {
                             });
                         }
                         catch (error) {
-                            const statusCode = (_c = (_b = (_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.statusCode) !== null && _b !== void 0 ? _b : error === null || error === void 0 ? void 0 : error.statusCode) !== null && _c !== void 0 ? _c : (_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.status;
+                            const statusCode = (_d = (_c = (_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.statusCode) !== null && _c !== void 0 ? _c : error === null || error === void 0 ? void 0 : error.statusCode) !== null && _d !== void 0 ? _d : (_e = error === null || error === void 0 ? void 0 : error.response) === null || _e === void 0 ? void 0 : _e.status;
                             if (statusCode !== 404) {
                                 throw error;
                             }
@@ -1160,7 +1217,7 @@ class ReachInbox {
                                 });
                             }
                             catch (pluralError) {
-                                const pluralStatusCode = (_g = (_f = (_e = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _e === void 0 ? void 0 : _e.statusCode) !== null && _f !== void 0 ? _f : pluralError === null || pluralError === void 0 ? void 0 : pluralError.statusCode) !== null && _g !== void 0 ? _g : (_h = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _h === void 0 ? void 0 : _h.status;
+                                const pluralStatusCode = (_h = (_g = (_f = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _f === void 0 ? void 0 : _f.statusCode) !== null && _g !== void 0 ? _g : pluralError === null || pluralError === void 0 ? void 0 : pluralError.statusCode) !== null && _h !== void 0 ? _h : (_j = pluralError === null || pluralError === void 0 ? void 0 : pluralError.response) === null || _j === void 0 ? void 0 : _j.status;
                                 if (pluralStatusCode !== 404) {
                                     throw pluralError;
                                 }
@@ -1172,7 +1229,7 @@ class ReachInbox {
                                     maxLeads: Number.POSITIVE_INFINITY,
                                     lastLead: false,
                                 });
-                                const rows = Array.isArray((_j = leadListResponse.data) === null || _j === void 0 ? void 0 : _j.rows)
+                                const rows = Array.isArray((_k = leadListResponse.data) === null || _k === void 0 ? void 0 : _k.rows)
                                     ? leadListResponse.data.rows
                                     : [];
                                 const uniqueEmails = [...new Set(rows
@@ -1364,6 +1421,237 @@ async function apiRequest(baseUrl, method, path, body) {
         options.body = body;
     const response = await this.helpers.request(options);
     return response;
+}
+async function getCampaignSettingsBundle(baseUrl, campaignId) {
+    var _a, _b, _c, _d;
+    const [detailsResponse, optionsResponse, scheduleResponse, sequencesResponse, subsequenceListResponse] = await Promise.all([
+        apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/details?campaignId=${campaignId}`),
+        apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/options?campaignId=${campaignId}`),
+        apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/schedule?campaignId=${campaignId}`),
+        apiRequest.call(this, baseUrl, 'GET', `/api/v1/campaign/sequences?campaignId=${campaignId}`),
+        apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${campaignId}`),
+    ]);
+    const subsequenceRows = extractSubsequenceRows(subsequenceListResponse);
+    const subsequenceDetails = await Promise.all(subsequenceRows.map(async (row) => {
+        var _a, _b, _c, _d;
+        const subsequenceId = Number((_c = (_b = (_a = row.subsequenceId) !== null && _a !== void 0 ? _a : row.id) !== null && _b !== void 0 ? _b : row.subSequenceId) !== null && _c !== void 0 ? _c : 0);
+        if (!subsequenceId)
+            return row;
+        const response = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/details?subsequenceId=${subsequenceId}`);
+        return ((_d = response.data) !== null && _d !== void 0 ? _d : response);
+    }));
+    return {
+        status: 200,
+        message: 'Campaign settings bundle',
+        data: {
+            campaignId,
+            details: ((_a = detailsResponse.data) !== null && _a !== void 0 ? _a : detailsResponse),
+            options: ((_b = optionsResponse.data) !== null && _b !== void 0 ? _b : optionsResponse),
+            schedule: ((_c = scheduleResponse.data) !== null && _c !== void 0 ? _c : scheduleResponse),
+            sequences: ((_d = sequencesResponse.data) !== null && _d !== void 0 ? _d : sequencesResponse),
+            subsequences: subsequenceDetails,
+        },
+    };
+}
+async function applyCampaignSettingsBundle(baseUrl, campaignId, bundle, behavior) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    const options = normalizeCampaignCopyBehavior(behavior);
+    const details = ((_a = bundle.details) !== null && _a !== void 0 ? _a : {});
+    const campaignOptions = ((_b = bundle.options) !== null && _b !== void 0 ? _b : {});
+    const schedule = ((_c = bundle.schedule) !== null && _c !== void 0 ? _c : {});
+    const sequences = ((_d = bundle.sequences) !== null && _d !== void 0 ? _d : {});
+    const subsequences = Array.isArray(bundle.subsequences) ? bundle.subsequences : [];
+    const responses = {};
+    if (options.includeName && details.name) {
+        responses.update = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update', {
+            campaignId: Number(campaignId),
+            name: details.name,
+        });
+    }
+    if (options.includeOptions && Object.keys(campaignOptions).length > 0) {
+        responses.updateOptions = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/campaign/update-options', {
+            campaignId: String(campaignId),
+            ...buildCampaignUpdateOptionsPayload(campaignOptions),
+        });
+    }
+    if (options.includeSchedule && Object.keys(schedule).length > 0) {
+        responses.saveSchedule = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/schedule/add', {
+            campaignId: String(campaignId),
+            ...buildCampaignSchedulePayload(schedule),
+        });
+    }
+    if (options.includeSequences && Object.keys(sequences).length > 0) {
+        responses.saveSequences = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/sequences/add', {
+            campaignId: String(campaignId),
+            ...buildCampaignSequencePayload(sequences, details),
+        });
+    }
+    if (options.includeSubsequences && subsequences.length > 0) {
+        const targetSubsequenceResponse = await apiRequest.call(this, baseUrl, 'GET', `/api/v1/subsequence/list?campaignId=${campaignId}`);
+        const targetSubsequences = extractSubsequenceRows(targetSubsequenceResponse);
+        const targetByName = new Map();
+        for (const row of targetSubsequences) {
+            const name = String((_e = row.name) !== null && _e !== void 0 ? _e : '').trim();
+            if (name)
+                targetByName.set(name, row);
+        }
+        const subsequenceResults = [];
+        for (const sourceSubsequence of subsequences) {
+            const payload = sanitizeSubsequencePayload(sourceSubsequence);
+            const name = String((_f = payload.name) !== null && _f !== void 0 ? _f : '').trim();
+            if (!name)
+                continue;
+            const existing = targetByName.get(name);
+            if (existing) {
+                const subsequenceId = Number((_j = (_h = (_g = existing.subsequenceId) !== null && _g !== void 0 ? _g : existing.id) !== null && _h !== void 0 ? _h : existing.subSequenceId) !== null && _j !== void 0 ? _j : 0);
+                if (!subsequenceId)
+                    continue;
+                subsequenceResults.push(await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/update', {
+                    subsequenceId,
+                    ...payload,
+                }));
+            }
+            else {
+                const created = await apiRequest.call(this, baseUrl, 'POST', '/api/v1/subsequence/create', {
+                    campaignId: Number(campaignId),
+                    ...payload,
+                });
+                subsequenceResults.push(created);
+            }
+        }
+        responses.subsequences = subsequenceResults;
+    }
+    return {
+        status: 200,
+        message: 'Applied campaign settings bundle',
+        data: {
+            campaignId,
+            behavior: options,
+            responses,
+        },
+    };
+}
+function normalizeCampaignCopyBehavior(behavior) {
+    var _a;
+    return {
+        includeName: Boolean((_a = behavior.includeName) !== null && _a !== void 0 ? _a : false),
+        includeOptions: behavior.includeOptions !== false,
+        includeSchedule: behavior.includeSchedule !== false,
+        includeSequences: behavior.includeSequences !== false,
+        includeSubsequences: behavior.includeSubsequences !== false,
+    };
+}
+function buildCampaignUpdateOptionsPayload(source) {
+    var _a, _b;
+    const payload = {};
+    const allowedKeys = [
+        'stopOnReply',
+        'stopOnDomainReply',
+        'tracking',
+        'linkTracking',
+        'deliveryOptimizations',
+        'dailyLimit',
+        'blockquote',
+        'notificationEmail',
+        'allowRiskyEmails',
+        'unsubscribeHeader',
+        'maxNewLeads',
+        'autoOptimizeAzMetric',
+        'prioritizeNewLeads',
+        'prioritizeSubsequenceLeads',
+        'globalUnsubscribe',
+        'opportunity',
+        'automaticReschedule',
+        'providerMatchingEnabled',
+        'targetLeadEsp',
+        'bounceProtection',
+        'pausedByBounceProtection',
+        'aiTimeGapsEnabled',
+        'bounceProtectionThreshold',
+        'cc',
+        'bcc',
+        'aiReplies',
+        'accountsToUse',
+        'exclude',
+    ];
+    for (const key of allowedKeys) {
+        if (source[key] !== undefined)
+            payload[key] = source[key];
+    }
+    const minimumExtraDelay = (_a = source.minimumExtraDelay) !== null && _a !== void 0 ? _a : source.minExtraDelay;
+    if (minimumExtraDelay !== undefined)
+        payload.minimumExtraDelay = minimumExtraDelay;
+    const maximumExtraDelay = (_b = source.maximumExtraDelay) !== null && _b !== void 0 ? _b : source.maxExtraDelay;
+    if (maximumExtraDelay !== undefined)
+        payload.maximumExtraDelay = maximumExtraDelay;
+    if (payload.exclude === undefined)
+        payload.exclude = [];
+    return payload;
+}
+function buildCampaignSchedulePayload(source) {
+    const schedules = Array.isArray(source.schedules) ? source.schedules : [];
+    return {
+        startDate: source.startDate,
+        endDate: source.endDate,
+        schedules: schedules.map((schedule) => {
+            var _a, _b, _c, _d;
+            return ({
+                name: schedule.name,
+                timing: {
+                    from: (_a = schedule.timeFrom) !== null && _a !== void 0 ? _a : (_b = schedule.timing) === null || _b === void 0 ? void 0 : _b.from,
+                    to: (_c = schedule.timeTo) !== null && _c !== void 0 ? _c : (_d = schedule.timing) === null || _d === void 0 ? void 0 : _d.to,
+                },
+                timezone: schedule.timezone,
+                days: schedule.days,
+            });
+        }),
+    };
+}
+function buildCampaignSequencePayload(source, details) {
+    var _a;
+    const payload = {};
+    if (source.sequences !== undefined)
+        payload.sequences = source.sequences;
+    const coreVariables = (_a = source.coreVariables) !== null && _a !== void 0 ? _a : details.coreVariables;
+    if (coreVariables !== undefined)
+        payload.coreVariables = coreVariables;
+    return payload;
+}
+function extractSubsequenceRows(response) {
+    var _a;
+    const data = ((_a = response.data) !== null && _a !== void 0 ? _a : response);
+    if (Array.isArray(data))
+        return data;
+    if (Array.isArray(data.rows))
+        return data.rows;
+    if (Array.isArray(data.subsequences))
+        return data.subsequences;
+    return [];
+}
+function sanitizeSubsequencePayload(source) {
+    const payload = {};
+    const ignoredKeys = new Set([
+        'id',
+        'subsequenceId',
+        'subSequenceId',
+        'campaignId',
+        'userId',
+        'workspaceId',
+        'createdAt',
+        'updatedAt',
+        'deletedAt',
+        'status',
+        'statusConnection',
+        'statusMessage',
+    ]);
+    for (const [key, value] of Object.entries(source)) {
+        if (ignoredKeys.has(key))
+            continue;
+        if (value === undefined)
+            continue;
+        payload[key] = value;
+    }
+    return payload;
 }
 function normalizeLeadForImport(lead) {
     const normalizedLead = {};
